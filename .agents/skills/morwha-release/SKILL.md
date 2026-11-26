@@ -10,8 +10,8 @@ Use this workflow whenever preparing a new M.O.R.W.H.A release (`vX.Y.Z` or `vX.
 
 ## How M.O.R.W.H.A Releases Work
 
-- Pushing a `v*` tag (`.\tag-push.bat vX.Y.Z`) triggers [.github/workflows/release-zip.yml](../../../.github/workflows/release-zip.yml) on `ubuntu-latest`.
-- The workflow **does not compile code in CI**; it stamps `SKSE/Plugins/MORWHA/version.txt` and packages the committed `Scripts/` and `SKSE/` directories into `MORWHA_vX.Y.Z.zip` (excluding `.pdb`, `.gitkeep`, `MORWHA.ini`, `DynamicNPCRegistry.json*`, and `GeneratedSkinCache.json*`).
+- Pushing a `v*` tag (`.\tag-push.bat vX.Y.Z`) triggers [.github/workflows/release-zip.yml](../../../.github/workflows/release-zip.yml) on `ubuntu-latest` to package the lightweight **Core** archive (`MORWHA_vX.Y.Z.zip`, ~1 MB — `Scripts/` + `SKSE/`, excluding `SkinStencils/*`, `.pdb`, `.gitkeep`, `MORWHA.ini`, `DynamicNPCRegistry.json*`, and `GeneratedSkinCache.json*`).
+- Pushing a `stencils-*` tag (`.\tag-push.bat stencils-v1.0.0`) triggers [.github/workflows/stencils-release.yml](../../../.github/workflows/stencils-release.yml) on `ubuntu-latest` to package the separate **Hybrid Skin Stencils** asset pack (`MORWHA_SkinStencils_v1.0.0.zip`, `62` `.mrst` files) and optionally upload it to `NEXUSMODS_STENCILS_FILE_ID`.
 - On a live tag push (or `workflow_dispatch` with `dry_run: false`), the workflow:
   1. Extracts the `## vX.Y.Z` section from `CHANGELOG.md` (or falls back to `"Automated release for vX.Y.Z"` if absent) and converts it to plain text for Nexus.
   2. Creates the GitHub Release with `MORWHA_vX.Y.Z.zip` attached (marking `alpha`/`beta`/`rc` tags as `prerelease: true`).

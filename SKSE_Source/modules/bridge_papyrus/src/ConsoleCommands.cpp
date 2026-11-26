@@ -5,6 +5,7 @@
 #include "morwha/engine/ChimeraEngineSupport.h"
 #include "morwha/engine/DpfClient.h"
 #include "morwha/engine/EngineLogging.h"
+#include "morwha/engine/HybridSkinService.h"
 #include "morwha/engine/SkseSerializationCallbacks.h"
 #include "morwha/state/MorwhaIniConfig.h"
 
@@ -243,13 +244,16 @@ namespace MORWHA::Bridge::Papyrus {
             const auto activeLinks = Serialization::GetActiveLinksSnapshot();
             const auto settings = coord.GetSettings();
             const auto chimeraMods = Engine::InspectInstalledChimeraMods();
+            const std::size_t stencilCount =
+                Engine::HybridSkinService::GetSingleton().GetDiscoveredStencilCount();
             PrintConsoleLine(std::format(
-                "MORWHA Status: version={}, ready={}, DPF.esp={}, FaceGenFixes.dll={}, hdtSMP64.dll={}, registrySpecs={} (uncommitted={}), activeSaveLinks={}, superEyes={}, scars={}, chimeraTier={}, wearableBeastParts={}",
+                "MORWHA Status: version={}, ready={}, DPF.esp={}, FaceGenFixes.dll={}, hdtSMP64.dll={}, skinStencils={}, registrySpecs={} (uncommitted={}), activeSaveLinks={}, superEyes={}, scars={}, chimeraTier={}, wearableBeastParts={}",
                 coord.GetVersion(),
                 coord.IsReady() ? "yes" : "no",
                 dpf.IsDpfAvailable() ? "ready" : "missing",
                 dpf.IsFaceGenFixesLoaded() ? "loaded" : "missing",
                 dpf.IsSmpLoaded() ? "loaded" : "missing",
+                stencilCount,
                 coord.GetRegisteredSpecCount(),
                 coord.GetUncommittedSpecCount(),
                 activeLinks.size(),
@@ -257,6 +261,10 @@ namespace MORWHA::Bridge::Papyrus {
                 settings.allowScars ? "on" : "off",
                 FormatChimeraTier(settings.beastChimeraTier),
                 chimeraMods.wearableBeastPartsLoaded ? "yes" : "no"));
+            if (settings.enableGeneratedHybridSkins && stencilCount == 0u) {
+                PrintConsoleLine(
+                    "MORWHA Note: 0 .mrst stencils found; install 'M.O.R.W.H.A - Hybrid Skin Stencils' for Tier-2 fur/scale hybrid skins.");
+            }
         }
 
         void PrintActiveLinks() {

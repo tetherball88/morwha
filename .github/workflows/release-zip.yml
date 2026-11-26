@@ -118,7 +118,9 @@ jobs:
             SKSE/ \
             -x ".github/*" \
             -x "*.pdb" \
+            -x "*.mrst" \
             -x "*/.gitkeep" \
+            -x "SKSE/Plugins/MORWHA/SkinStencils/*" \
             -x "SKSE/Plugins/MORWHA/MORWHA.ini" \
             -x "SKSE/Plugins/MORWHA/DynamicNPCRegistry.json*" \
             -x "SKSE/Plugins/MORWHA/GeneratedSkinCache.json*"

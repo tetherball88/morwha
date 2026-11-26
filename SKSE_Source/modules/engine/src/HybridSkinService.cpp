@@ -243,6 +243,11 @@ namespace MORWHA::Engine {
         return instance;
     }
 
+    std::size_t HybridSkinService::GetDiscoveredStencilCount() const noexcept {
+        std::lock_guard lock(mutex_);
+        return availableStencilFiles_.size();
+    }
+
     HybridSkinService::BaseSkinFamily HybridSkinService::FamilyForCoatGroup(
         Core::HybridCoatGroup group) noexcept {
         switch (group) {
@@ -623,8 +628,14 @@ namespace MORWHA::Engine {
         LoadCacheManifest();
         initialized_ = true;
 
+        if (enabled_ && availableStencilFiles_.empty()) {
+            MORWHA_LOG_WARN(
+                "HybridSkinService: No .mrst stencils found in '{}'; install the 'M.O.R.W.H.A - Hybrid Skin Stencils' asset pack to enable Tier-2 fur/scale hybrid skins",
+                Core::kDefaultHybridStencilsDir);
+        }
+
         PrewarmStats stats{};
-        if (enabled_) {
+        if (enabled_ && !availableStencilFiles_.empty()) {
             PrewarmAllHybridSkins(stats);
         }
 

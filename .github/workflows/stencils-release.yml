@@ -1,0 +1,141 @@
+name: Skin Stencils Release
+
+on:
+  push:
+    tags:
+      - "stencils-*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Stencils pack version (e.g. v1.0.0)"
+        required: true
+        default: "v1.0.0"
+        type: string
+      dry_run:
+        description: "Dry run (skip GitHub Release and Nexus Mods upload)"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  make-stencils-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      clean_version: ${{ steps.meta.outputs.clean_version }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version and release tag
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            RAW="${INPUT_VERSION}"
+          else
+            RAW="${REF_NAME}"
+          fi
+          RAW="$(printf '%s' "${RAW}" | tr -d '\r\n' | tr -d ' ')"
+          VERSION="${RAW#stencils-}"
+          if [ -z "${VERSION}" ] || ! printf '%s' "${VERSION}" | grep -Eq '^[A-Za-z0-9._-]+$'; then
+            echo "Invalid stencils version: '${RAW}'" >&2
+            exit 1
+          fi
+          CLEAN_VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "clean_version=${CLEAN_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=stencils-${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create SkinStencils zip
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p out
+          COUNT=$(find SKSE/Plugins/MORWHA/SkinStencils -maxdepth 1 -name "*.mrst" | wc -l)
+          echo "Packaging ${COUNT} .mrst stencil files..."
+          if [ "${COUNT}" -lt 62 ]; then
+            echo "Expected at least 62 .mrst files, found ${COUNT}" >&2
+            exit 1
+          fi
+          zip -0 -r "out/MORWHA_SkinStencils_${VERSION}.zip" \
+            SKSE/Plugins/MORWHA/SkinStencils/*.mrst
+
+      - name: Upload stencils artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stencils-zip
+          path: out/MORWHA_SkinStencils_${{ steps.meta.outputs.version }}.zip
+
+      - name: Create or update Skin Stencils GitHub Release
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: Hybrid Skin Stencils ${{ steps.meta.outputs.version }}
+          body: |
+            Pre-baked 4-map 3D `.mrst` hybrid fur & scale skin stencils (${{ steps.meta.outputs.version }}) for **M.O.R.W.H.A** Tier-2 Beast & Beast-Cross Chimeras.
+
+            Covers `Vanilla` & `High Poly Head` faces, `Khajiit × Argonian` heads, and auto-detected `CBBE` / `3BA` / `TBD`, `BHUNP` / `UNP`, `Vanilla` (F/M), `UBE 2.0`, and `HIMBO` / `TNG` / `SOS` body meshes. Install once alongside **M.O.R.W.H.A** Core in MO2 / Vortex.
+          files: |
+            out/MORWHA_SkinStencils_${{ steps.meta.outputs.version }}.zip
+
+  publish-stencils-nexus:
+    name: Publish Skin Stencils to Nexus Mods
+    needs: make-stencils-release
+    runs-on: ubuntu-latest
+    environment: nexusmods
+    steps:
+      - name: Download stencils artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: stencils-zip
+          path: out
+
+      - name: Rename artifact
+        run: |
+          VERSION="${{ needs.make-stencils-release.outputs.version }}"
+          CLEAN_VERSION="${{ needs.make-stencils-release.outputs.clean_version }}"
+          if [ "${VERSION}" != "${CLEAN_VERSION}" ]; then
+            mv "out/MORWHA_SkinStencils_${VERSION}.zip" "out/MORWHA_SkinStencils_${CLEAN_VERSION}.zip"
+          fi
+
+      - name: Check Nexus Mods stencils configuration
+        id: nexus_gate
+        env:
+          NEXUS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
+          NEXUS_MOD_ID: ${{ vars.NEXUSMODS_MOD_ID || secrets.NEXUSMODS_MOD_ID }}
+          NEXUS_STENCILS_FILE_ID: ${{ vars.NEXUSMODS_STENCILS_FILE_ID || secrets.NEXUSMODS_STENCILS_FILE_ID }}
+        run: |
+          if [ -n "${NEXUS_API_KEY}" ] && [ -n "${NEXUS_MOD_ID}" ] && [ -n "${NEXUS_STENCILS_FILE_ID}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Nexus Mods stencils file ID/credentials not configured yet; skipping Nexus upload."
+          fi
+
+      - name: Upload Skin Stencils to Nexus Mods
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.nexus_gate.outputs.ready == 'true' }}
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.11
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          mod_id: ${{ vars.NEXUSMODS_MOD_ID || secrets.NEXUSMODS_MOD_ID }}
+          file_id: ${{ vars.NEXUSMODS_STENCILS_FILE_ID || secrets.NEXUSMODS_STENCILS_FILE_ID }}
+          filename: out/MORWHA_SkinStencils_${{ needs.make-stencils-release.outputs.clean_version }}.zip
+          version: ${{ needs.make-stencils-release.outputs.clean_version }}
+          display_name: M.O.R.W.H.A - Hybrid Skin Stencils
+          changelog: "Hybrid fur & scale 3D skin stencils pack (${{ needs.make-stencils-release.outputs.clean_version }})."
+          category: main
+          update_mod_version: false
+          primary_mod_manager_download: false
+          archive_existing_version: false

@@ -43,6 +43,8 @@ namespace MORWHA::Engine {
         void InitializeAtDataLoaded(const SynthesisSettings& settings);
         void UpdateSettings(const SynthesisSettings& settings);
 
+        [[nodiscard]] std::size_t GetDiscoveredStencilCount() const noexcept;
+
         [[nodiscard]] bool IsCoatGroupReadyForSettings(
             Core::HybridCoatGroup group,
             Foundation::Sex sex,
