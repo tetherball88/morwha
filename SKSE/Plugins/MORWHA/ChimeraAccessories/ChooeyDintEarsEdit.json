@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "plugin": "ChooeyDintEarsEdit.esp",
+  "requiresSkee64": true,
+  "entries": [
+    { "lineage": "HumanoidKhajiit", "slotKind": "HeadPart", "sex": "Any", "localId": "0x000838" },
+    { "lineage": "HumanoidKhajiit", "slotKind": "HeadPart", "sex": "Any", "localId": "0x000839" },
+    { "lineage": "HumanoidKhajiit", "slotKind": "HeadPart", "sex": "Any", "localId": "0x00083A" },
+    { "lineage": "HumanoidKhajiit", "slotKind": "HeadPart", "sex": "Any", "localId": "0x00083B" },
+    { "lineage": "HumanoidKhajiit", "slotKind": "HeadPart", "sex": "Any", "localId": "0x00083C" }
+  ]
+}

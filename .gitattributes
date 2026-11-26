@@ -1,0 +1,21 @@
+# Normalize text files while keeping GitHub Actions workflows LF and game/stencil binaries untouched
+* text=auto eol=crlf
+.github/workflows/*.yml text eol=lf
+
+# Binary files
+*.esp binary
+*.esm binary
+*.esl binary
+*.pex binary
+*.dll binary
+*.lib binary
+*.pdb binary
+*.bsa binary
+*.mrst binary
+*.dds binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.nif binary
+*.hkx binary
+*.tri binary

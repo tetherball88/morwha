@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "plugin": "NK_HornSlider.esp",
+  "requiresSkee64": true,
+  "entries": [
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x000812" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x000813" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x000814" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x000815" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x00081F" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x000822" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009BD" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009BE" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009BF" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009C0" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009C1" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009C2" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009C3" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009C4" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009C5" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009C6" },
+    { "lineage": "HumanoidArgonian", "slotKind": "HeadPart", "sex": "Any", "localId": "0x0009C7" }
+  ]
+}

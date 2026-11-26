@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "plugin": "PraedysHorns.esp",
+  "requiresSkee64": true,
+  "entries": [
+    { "lineage": "HumanoidArgonian", "slotKind": "SkinArmorAddon", "sex": "Any", "localId": "0x000D65" },
+    { "lineage": "HumanoidArgonian", "slotKind": "SkinArmorAddon", "sex": "Any", "localId": "0x000D66" },
+    { "lineage": "HumanoidArgonian", "slotKind": "SkinArmorAddon", "sex": "Any", "localId": "0x000D8A" },
+    { "lineage": "HumanoidArgonian", "slotKind": "SkinArmorAddon", "sex": "Any", "localId": "0x000D95" }
+  ]
+}

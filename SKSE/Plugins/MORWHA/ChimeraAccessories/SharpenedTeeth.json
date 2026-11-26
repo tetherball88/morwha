@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "plugin": "Sharpened Teeth - Character Creation.esp",
+  "requiresSkee64": false,
+  "entries": [
+    { "lineage": "AnyChimera", "slotKind": "HeadPart", "sex": "Female", "localId": "0x000800" },
+    { "lineage": "AnyChimera", "slotKind": "HeadPart", "sex": "Male", "localId": "0x000801" }
+  ]
+}
