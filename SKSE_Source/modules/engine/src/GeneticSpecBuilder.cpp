@@ -276,7 +276,9 @@ namespace MORWHA::Engine {
             bool inheritedDarkSclera,
             const ExtractedEngineDonor* optionalPrimaryDonor,
             const ExtractedEngineDonor* optionalSecondaryDonor,
-            Foundation::AgeBracket requestedAgeBracket) {
+            Foundation::AgeBracket requestedAgeBracket,
+            bool preferOtherParentEyes,
+            bool preferOtherParentBrows) {
             const bool smpLoaded = DpfClient::GetSingleton().IsSmpLoaded();
 
             State::DynamicNpcSpec spec{};
@@ -398,15 +400,38 @@ namespace MORWHA::Engine {
                 inheritedDarkSclera,
                 /*preferSlitPupil=*/false,
                 optionalOtherParentRaceForEyes,
-                rng));
+                rng,
+                preferOtherParentEyes));
             appendChosenPart(pickFromVec(
                 pool ? pool->hairs : kEmptyPartPool,
                 RE::BGSHeadPart::HeadPartType::kHair,
                 true));
-            appendChosenPart(pickFromVec(
-                pool ? pool->eyebrows : kEmptyPartPool,
-                RE::BGSHeadPart::HeadPartType::kEyebrows,
-                true));
+            {
+                std::vector<RE::BGSHeadPart*> otherCompatBrows;
+                const std::vector<RE::BGSHeadPart*>* browPoolPtr =
+                    pool ? &pool->eyebrows : &kEmptyPartPool;
+                if (preferOtherParentBrows && pool && !pool->eyebrows.empty() &&
+                    optionalOtherParentRaceForEyes != nullptr &&
+                    optionalOtherParentRaceForEyes != targetRace) {
+                    const auto* otherPool = HeadPartPoolIndexer::GetSingleton().GetPool(
+                        optionalOtherParentRaceForEyes, targetSex, chosenTopology);
+                    if (otherPool && !otherPool->eyebrows.empty()) {
+                        const RE::BGSHeadPart* refBrow = pool->eyebrows.front();
+                        for (RE::BGSHeadPart* cand : otherPool->eyebrows) {
+                            if (cand && HeadPartPoolIndexer::HaveCompatibleBrowGeometry(cand, refBrow)) {
+                                otherCompatBrows.push_back(cand);
+                            }
+                        }
+                        if (!otherCompatBrows.empty()) {
+                            browPoolPtr = &otherCompatBrows;
+                        }
+                    }
+                }
+                appendChosenPart(pickFromVec(
+                    *browPoolPtr,
+                    RE::BGSHeadPart::HeadPartType::kEyebrows,
+                    true));
+            }
 
             if (targetSex == Foundation::Sex::Male &&
                 std::bernoulli_distribution(0.50)(rng)) {
@@ -435,6 +460,10 @@ namespace MORWHA::Engine {
             }
 
             spec.skinColor = skinColor;
+            if (ResolveRaceGroup(targetRace) == Core::RaceGroup::Humanoid) {
+                const auto effectiveAge = Core::ResolveAgeBracket(requestedAgeBracket, donorMode, seed);
+                hairColor = Core::SanitizeYouthfulHumanHairTint(hairColor, effectiveAge, seed);
+            }
             spec.hairColor = hairColor;
             spec.hairColorFormRef = MatchNearestHairColorForm(faceRelated, spec.hairColor);
 
@@ -512,13 +541,15 @@ namespace MORWHA::Engine {
             bool allowDarkScleraEyes,
             bool preferSlitPupil,
             const RE::TESRace* optionalOtherParentRaceForEyes,
-            std::mt19937_64& rng) {
+            std::mt19937_64& rng,
+            bool preferOtherParentEyes) {
             static const std::vector<RE::BGSHeadPart*> kEmptyPartPool{};
             const auto* pool =
                 HeadPartPoolIndexer::GetSingleton().GetPool(targetRace, targetSex, chosenTopology);
-            const std::size_t nativePoolCount = pool ? pool->eyes.size() : 0u;
+            std::size_t activeNativePoolCount = pool ? pool->eyes.size() : 0u;
+            bool effectiveAllowDarkSclera = allowDarkScleraEyes;
 
-            std::vector<RE::BGSHeadPart*> mergedEyePool;
+            std::vector<RE::BGSHeadPart*> selectedEyePool;
             const std::vector<RE::BGSHeadPart*>* eyePoolPtr = pool ? &pool->eyes : &kEmptyPartPool;
             if (pool && !pool->eyes.empty() &&
                 optionalOtherParentRaceForEyes != nullptr &&
@@ -526,27 +557,51 @@ namespace MORWHA::Engine {
                 const auto* otherPool = HeadPartPoolIndexer::GetSingleton().GetPool(
                     optionalOtherParentRaceForEyes, targetSex, chosenTopology);
                 if (otherPool && !otherPool->eyes.empty()) {
-                    mergedEyePool = pool->eyes;
                     const RE::BGSHeadPart* refEye = pool->eyes.front();
-                    for (RE::BGSHeadPart* cand : otherPool->eyes) {
-                        if (!cand ||
-                            !HeadPartPoolIndexer::HaveCompatibleEyeGeometry(cand, refEye) ||
-                            std::find(mergedEyePool.begin(), mergedEyePool.end(), cand) !=
-                                mergedEyePool.end()) {
-                            continue;
+                    if (preferOtherParentEyes) {
+                        auto& cache = TriProjectorCache::GetSingleton();
+                        bool otherRaceHasAuthoritativeDarkEyes = false;
+                        for (RE::BGSHeadPart* cand : otherPool->eyes) {
+                            if (!cand || !HeadPartPoolIndexer::HaveCompatibleEyeGeometry(cand, refEye)) {
+                                continue;
+                            }
+                            selectedEyePool.push_back(cand);
+                            if (HeadPartPoolIndexer::IsAuthoritativeBaseOrHphPart(cand)) {
+                                const auto sig = cache.GetOrDecodeEyeHeadPartIris(cand);
+                                if (Core::IsEyeSampleSeeingMortal(sig, allowSupernaturalEyes) &&
+                                    Core::HasEyeSampleDarkSclera(sig)) {
+                                    otherRaceHasAuthoritativeDarkEyes = true;
+                                }
+                            }
                         }
-                        mergedEyePool.push_back(cand);
+                        if (!selectedEyePool.empty()) {
+                            eyePoolPtr = &selectedEyePool;
+                            activeNativePoolCount = selectedEyePool.size();
+                            effectiveAllowDarkSclera =
+                                allowDarkScleraEyes || otherRaceHasAuthoritativeDarkEyes;
+                        }
+                    } else if (preferSlitPupil) {
+                        selectedEyePool = pool->eyes;
+                        for (RE::BGSHeadPart* cand : otherPool->eyes) {
+                            if (!cand ||
+                                !HeadPartPoolIndexer::HaveCompatibleEyeGeometry(cand, refEye) ||
+                                std::find(selectedEyePool.begin(), selectedEyePool.end(), cand) !=
+                                    selectedEyePool.end()) {
+                                continue;
+                            }
+                            selectedEyePool.push_back(cand);
+                        }
+                        eyePoolPtr = &selectedEyePool;
                     }
-                    eyePoolPtr = &mergedEyePool;
                 }
             }
             const bool smpLoaded = DpfClient::GetSingleton().IsSmpLoaded();
             return SelectInheritedOrPooledEye(
                 *eyePoolPtr,
-                nativePoolCount,
+                activeNativePoolCount,
                 targetIris,
                 allowSupernaturalEyes,
-                allowDarkScleraEyes,
+                effectiveAllowDarkSclera,
                 preferSlitPupil,
                 chosenTopology,
                 presetNpc,
@@ -779,10 +834,24 @@ namespace MORWHA::Engine {
         const auto& activeDonor =
             (forcedRaceParent == Core::InheritedParentSlot::ParentA) ? donorA : donorB;
 
+        const auto& otherCheckDonor =
+            (forcedRaceParent == Core::InheritedParentSlot::ParentA) ? donorB : donorA;
+        RE::TESRace* otherCheckBio = otherCheckDonor.geometryBundle.unwrappedDonorRace
+                                         ? otherCheckDonor.geometryBundle.unwrappedDonorRace
+                                         : UnwrapToPlayableSynthesisRace(otherCheckDonor.race, targetSex);
+        const auto& poolIndexer = HeadPartPoolIndexer::GetSingleton();
+        const bool sharedHumanoidChargen =
+            otherCheckBio != nullptr &&
+            otherCheckBio != targetRace &&
+            poolIndexer.SharesHumanoidChargenTri(targetRace) &&
+            poolIndexer.SharesHumanoidChargenTri(otherCheckBio);
+
         Core::RecombinedPhenotype recombined{};
         std::optional<Core::EyeTarget> targetIris;
         bool inheritedDarkSclera = false;
-        const bool allowCrossRaceMorphs = IsAllRaceMorphsUnlocked(faceRelated);
+        bool preferOtherParentEyes = false;
+        bool preferOtherParentBrows = false;
+        const bool allowCrossRaceMorphs = sharedHumanoidChargen || IsAllRaceMorphsUnlocked(faceRelated);
         const RE::TESRace* secondRaceForNoseEyes = nullptr;
         const RE::TESRace* otherParentRaceForEyes = nullptr;
 
@@ -825,6 +894,14 @@ namespace MORWHA::Engine {
                                             : UnwrapToPlayableSynthesisRace(otherDonor.race, targetSex);
                 if (otherBio != nullptr && otherBio != targetRace) {
                     otherParentRaceForEyes = otherBio;
+                    preferOtherParentEyes =
+                        (recombined.eyeDonorPreference != recombined.chosenRaceParent);
+                    const float browDomA =
+                        recombined.clusterDominanceA[static_cast<std::size_t>(Foundation::FaceCluster::Brows)];
+                    preferOtherParentBrows =
+                        (recombined.chosenRaceParent == Core::InheritedParentSlot::ParentA)
+                            ? (browDomA < 0.45f)
+                            : (browDomA > 0.55f);
                     if (allowCrossRaceMorphs) {
                         secondRaceForNoseEyes = otherBio;
                     }
@@ -930,7 +1007,9 @@ namespace MORWHA::Engine {
             inheritedDarkSclera,
             &chosenPrimaryDonor,
             secondaryBeastDonor,
-            requestedAgeBracket);
+            requestedAgeBracket,
+            preferOtherParentEyes,
+            preferOtherParentBrows);
         if (builtSpec) {
             RE::TESRace* bioA = donorA.geometryBundle.unwrappedDonorRace
                                     ? donorA.geometryBundle.unwrappedDonorRace

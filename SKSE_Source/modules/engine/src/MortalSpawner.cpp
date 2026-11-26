@@ -1,5 +1,6 @@
 #include "morwha/engine/MortalSpawner.h"
 
+#include "morwha/engine/AgeProfileResolver.h"
 #include "morwha/engine/ChimeraAccessoryCatalog.h"
 #include "morwha/engine/EngineLogging.h"
 #include "morwha/engine/Mortal3dSyncService.h"
@@ -52,6 +53,9 @@ namespace MORWHA::Engine {
                 anchorRef->GetFormID());
             return nullptr;
         }
+        // Re-assert age keywords after PlaceObjectAtMe in case SPID's ShouldBackgroundClone hook
+        // attached voice-based RSVold onto a YoungAdult/Mature/MiddleAged dynamic TESNPC.
+        SyncNpcAgeCompatibilityKeywords(baseNpc, spec);
 
         Serialization::RegisterSpawnedLink(State::SpawnedMortalLink{
             .actorRefId = Foundation::FormRawId{ actor->GetFormID() },

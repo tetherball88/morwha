@@ -6,14 +6,116 @@
 #include "morwha/engine/HybridSkinService.h"
 #include "morwha/engine/SkeeOverlayClient.h"
 
+#include <RE/B/BSDynamicTriShape.h>
+#include <RE/B/BSFaceGenAnimationData.h>
+#include <RE/B/BSFaceGenBaseMorphExtraData.h>
+#include <RE/N/NiBooleanExtraData.h>
+
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 namespace MORWHA::Engine {
 
     namespace {
         constexpr std::uint32_t kDefaultSyncRetries = 100;
         constexpr std::int64_t kPollIntervalMs = 100;
+        constexpr const char* kEarMorphMarkerKey = "MORWHA_EarMorph";
+
+        void ApplyActorEarMorphIfNeeded(
+            RE::TESNPC* npc,
+            RE::BSFaceGenNiNode* faceNode,
+            const std::vector<float>& earDeltas) {
+            if (!npc || !faceNode || earDeltas.empty() || (earDeltas.size() % 3u) != 0u) {
+                return;
+            }
+            const auto expectedVerts = static_cast<std::uint32_t>(earDeltas.size() / 3u);
+            RE::BSDynamicTriShape* headDyn = nullptr;
+
+            if (npc->headParts && npc->numHeadParts > 0) {
+                for (std::int8_t i = 0; i < npc->numHeadParts; ++i) {
+                    const RE::BGSHeadPart* hp = npc->headParts[i];
+                    if (!hp || hp->type.get() != RE::BGSHeadPart::HeadPartType::kFace ||
+                        hp->formEditorID.empty()) {
+                        continue;
+                    }
+                    if (auto* obj = faceNode->GetObjectByName(hp->formEditorID)) {
+                        if (auto* geom = obj->AsGeometry()) {
+                            if (auto* dyn = geom->AsDynamicTriShape();
+                                dyn && dyn->GetTrishapeRuntimeData().vertexCount == expectedVerts) {
+                                headDyn = dyn;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!headDyn) {
+                RE::BSVisit::TraverseScenegraphGeometries(
+                    faceNode,
+                    [&](RE::BSGeometry* geom) -> RE::BSVisit::BSVisitControl {
+                        if (auto* dyn = geom ? geom->AsDynamicTriShape() : nullptr) {
+                            if (dyn->GetTrishapeRuntimeData().vertexCount == expectedVerts &&
+                                dyn->GetExtraData<RE::BSFaceGenBaseMorphExtraData>("FGBM") != nullptr) {
+                                headDyn = dyn;
+                                return RE::BSVisit::BSVisitControl::kStop;
+                            }
+                        }
+                        return RE::BSVisit::BSVisitControl::kContinue;
+                    });
+            }
+
+            if (!headDyn || headDyn->HasExtraData(kEarMorphMarkerKey)) {
+                return;
+            }
+
+            bool appliedAny = false;
+            if (auto* fgbm = headDyn->GetExtraData<RE::BSFaceGenBaseMorphExtraData>("FGBM");
+                fgbm && fgbm->vertexData && fgbm->modelVertexCount == expectedVerts) {
+                for (std::uint32_t v = 0u; v < expectedVerts; ++v) {
+                    const float dx = earDeltas[static_cast<std::size_t>(v) * 3u + 0u];
+                    const float dy = earDeltas[static_cast<std::size_t>(v) * 3u + 1u];
+                    const float dz = earDeltas[static_cast<std::size_t>(v) * 3u + 2u];
+                    if (dx != 0.0f || dy != 0.0f || dz != 0.0f) {
+                        fgbm->vertexData[v].x += dx;
+                        fgbm->vertexData[v].y += dy;
+                        fgbm->vertexData[v].z += dz;
+                        appliedAny = true;
+                    }
+                }
+            }
+
+            {
+                auto& dynData = headDyn->GetDynamicTrishapeRuntimeData();
+                RE::BSSpinLockGuard guard(dynData.lock);
+                if (dynData.dynamicData != nullptr &&
+                    dynData.dataSize == expectedVerts * 16u) {
+                    auto* rawFloats = static_cast<float*>(dynData.dynamicData);
+                    for (std::uint32_t v = 0u; v < expectedVerts; ++v) {
+                        const float dx = earDeltas[static_cast<std::size_t>(v) * 3u + 0u];
+                        const float dy = earDeltas[static_cast<std::size_t>(v) * 3u + 1u];
+                        const float dz = earDeltas[static_cast<std::size_t>(v) * 3u + 2u];
+                        if (dx != 0.0f || dy != 0.0f || dz != 0.0f) {
+                            rawFloats[static_cast<std::size_t>(v) * 4u + 0u] += dx;
+                            rawFloats[static_cast<std::size_t>(v) * 4u + 1u] += dy;
+                            rawFloats[static_cast<std::size_t>(v) * 4u + 2u] += dz;
+                            appliedAny = true;
+                        }
+                    }
+                    dynData.frameCount = 0u;
+                }
+            }
+
+            if (appliedAny) {
+                if (auto& anim = faceNode->GetRuntimeData().animationData; anim) {
+                    anim->unk217 = true;
+                }
+                if (auto* marker = RE::NiBooleanExtraData::Create(kEarMorphMarkerKey, true)) {
+                    (void)headDyn->AddExtraData(marker);
+                }
+            }
+        }
     }  // namespace
 
     Mortal3dSyncService& Mortal3dSyncService::GetSingleton() noexcept {
@@ -71,7 +173,8 @@ namespace MORWHA::Engine {
         Foundation::RgbColor skinColor,
         std::optional<Foundation::RgbColor> tailColor,
         std::optional<Foundation::RgbColor> hornColor,
-        std::optional<Foundation::RgbColor> earColor) {
+        std::optional<Foundation::RgbColor> earColor,
+        std::shared_ptr<const std::vector<float>> earMorphDeltas) {
         if (baseNpcFormId == 0) {
             return;
         }
@@ -84,7 +187,8 @@ namespace MORWHA::Engine {
                 .skinColor = skinColor,
                 .tailColor = tailColor,
                 .hornColor = hornColor,
-                .earColor = earColor
+                .earColor = earColor,
+                .earMorphDeltas = std::move(earMorphDeltas)
             });
     }
 
@@ -217,6 +321,9 @@ namespace MORWHA::Engine {
                         entryOpt->tailColor,
                         entryOpt->hornColor,
                         entryOpt->earColor);
+                    if (entryOpt->earMorphDeltas && !entryOpt->earMorphDeltas->empty()) {
+                        ApplyActorEarMorphIfNeeded(npc, faceNode, *entryOpt->earMorphDeltas);
+                    }
                     applyingSync_.store(false, std::memory_order_release);
 
                     const auto& accessoryCatalog = ChimeraAccessoryCatalog::GetSingleton();

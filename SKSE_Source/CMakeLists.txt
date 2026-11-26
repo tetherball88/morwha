@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(MORWHA VERSION 0.1.0 LANGUAGES CXX)
+project(MORWHA VERSION 0.1.1 LANGUAGES CXX)
 
 set(MOD_FOLDER_NAME "MORWHA Dev")
 set(SKYRIM_MODS_FOLDER "E:\\Skyrim\\development\\mods")

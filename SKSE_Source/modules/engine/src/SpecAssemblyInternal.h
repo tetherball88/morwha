@@ -60,7 +60,8 @@ namespace MORWHA::Engine::Detail {
         bool allowDarkScleraEyes,
         bool preferSlitPupil,
         const RE::TESRace* optionalOtherParentRaceForEyes,
-        std::mt19937_64& rng);
+        std::mt19937_64& rng,
+        bool preferOtherParentEyes = false);
 
     [[nodiscard]] std::optional<State::DynamicNpcSpec> AssembleDynamicNpcSpec(
         std::string slotKey,
@@ -85,6 +86,8 @@ namespace MORWHA::Engine::Detail {
         bool inheritedDarkSclera = false,
         const ExtractedEngineDonor* optionalPrimaryDonor = nullptr,
         const ExtractedEngineDonor* optionalSecondaryDonor = nullptr,
-        Foundation::AgeBracket requestedAgeBracket = Foundation::AgeBracket::Auto);
+        Foundation::AgeBracket requestedAgeBracket = Foundation::AgeBracket::Auto,
+        bool preferOtherParentEyes = false,
+        bool preferOtherParentBrows = false);
 
 }  // namespace MORWHA::Engine::Detail

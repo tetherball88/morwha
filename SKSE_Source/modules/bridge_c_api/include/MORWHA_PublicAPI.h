@@ -34,7 +34,7 @@ struct MORWHA_FactionRank {
 
 // Optional archetype & record overrides (0 = keep auto-resolved/unchanged, kMORWHA_ClearFormId = clear).
 // Note: voiceTypeFormId != 0 overrides AgeBracket automatic sex-checked voice selection;
-//       faceTextureSetFormId != 0 overrides AgeBracket radiometric skin complexion selection.
+//       faceTextureSetFormId != 0 overrides AgeBracket automatic skin complexion selection.
 struct MORWHA_ArchetypeParams {
     std::uint32_t structSize{ sizeof(MORWHA_ArchetypeParams) };
     std::uint32_t voiceTypeFormId{ 0 };

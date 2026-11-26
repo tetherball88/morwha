@@ -948,6 +948,15 @@ namespace MORWHA::Engine {
             buf.input.donorSex = donor->donorSex;
             buf.input.donorCanonicalRig = donorCanon->rig;
             buf.input.donorBaselineRig = baseline;
+            if (!isOneDonorRelative && donor->unwrappedDonorRace != unwrappedTarget) {
+                const CanonicalTriAsset* donorTargetSpace = GetOrBuildCanonicalTriAssetLocked(
+                    donor->unwrappedDonorRace, targetSex, targetTopology);
+                if (donorTargetSpace &&
+                    donorTargetSpace->chargenTri == ctx->canonical.chargenTri &&
+                    donorTargetSpace->rig) {
+                    buf.input.optionalTargetSpaceDonorRaceRig = donorTargetSpace->rig;
+                }
+            }
             buf.input.headMesh = Core::MeshView{ headMesh->vertices, headMesh->triangles };
             buf.input.eyeMeshes = buf.eyeViews;
             buf.input.mouthVertices =
@@ -1117,6 +1126,40 @@ namespace MORWHA::Engine {
         }
         Core::SanitizeHeadMorphClearance(
             canon->rig, faceMorphs, allowedEyesPresets, allowedMouthPresets);
+    }
+
+    std::vector<float> TriProjectorCache::ComputeSpecCrossRaceEarDeltas(
+        RE::TESRace* targetRace,
+        RE::TESRace* secondaryRace,
+        Foundation::Sex sex,
+        Foundation::TopologyPool topology,
+        Foundation::Seed64 seed) {
+        if (!targetRace || !secondaryRace || targetRace == secondaryRace) {
+            return {};
+        }
+        RE::TESRace* unwrappedTarget = UnwrapToPlayableSynthesisRace(targetRace, sex);
+        if (!unwrappedTarget) {
+            unwrappedTarget = targetRace;
+        }
+        RE::TESRace* unwrappedSecondary = UnwrapToPlayableSynthesisRace(secondaryRace, sex);
+        if (!unwrappedSecondary) {
+            unwrappedSecondary = secondaryRace;
+        }
+        if (unwrappedTarget == unwrappedSecondary) {
+            return {};
+        }
+
+        std::lock_guard lock(mutex_);
+        const CanonicalTriAsset* canonTarget =
+            GetOrBuildCanonicalTriAssetLocked(unwrappedTarget, sex, topology);
+        const CanonicalTriAsset* canonSecondary =
+            GetOrBuildCanonicalTriAssetLocked(unwrappedSecondary, sex, topology);
+        if (!canonTarget || !canonSecondary ||
+            !canonTarget->chargenTri || !canonTarget->rig || !canonSecondary->rig ||
+            canonTarget->chargenTri != canonSecondary->chargenTri) {
+            return {};
+        }
+        return Core::BuildCrossRaceEarMorphDeltas(canonTarget->rig, canonSecondary->rig, seed);
     }
 
 }  // namespace MORWHA::Engine

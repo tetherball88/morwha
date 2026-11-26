@@ -42,6 +42,10 @@ namespace MORWHA::Engine {
             const State::ChimeraLineageFeatureConfig& argonianCfg) const noexcept;
         [[nodiscard]] bool IsSkee64Loaded() const noexcept { return skee64Loaded_; }
         [[nodiscard]] bool HasBeastMouthTextureSet(State::BeastTeethKind teethKind) const noexcept;
+        [[nodiscard]] bool IsHumanMouthPartCompatible(const RE::BGSHeadPart* mouthPart) const;
+        [[nodiscard]] bool RaceUsesCanonicalHumanMouth(
+            const RE::TESRace* race,
+            Foundation::Sex sex) const;
 
         [[nodiscard]] RE::BGSHeadPart* PickEarHeadPart(
             Core::ChimeraLineageKind lineage,
@@ -170,11 +174,19 @@ namespace MORWHA::Engine {
             std::string_view folderName,
             std::string_view editorId);
 
+        struct CanonicalMouthSignature {
+            std::string modelVfs{};
+            std::string chargenTriVfs{};
+
+            bool operator==(const CanonicalMouthSignature&) const noexcept = default;
+        };
+
         bool initialized_{ false };
         bool skee64Loaded_{ false };
 
         std::vector<RE::TESRace*> humanoidRaces_{};
         RE::BGSListForm* humanoidValidRacesList_{ nullptr };
+        std::vector<CanonicalMouthSignature> canonicalHumanMouthSignatures_{};
 
         RE::TESObjectARMA* clonedTailKhajiit_{ nullptr };
         RE::TESObjectARMA* clonedTailArgonian_{ nullptr };

@@ -121,6 +121,20 @@ namespace MORWHA::Engine {
             return true;
         }
 
+        [[nodiscard]] bool IsBilateralTwoEyedPart(
+            const RE::BGSHeadPart* hp,
+            EyeNifGeoCache& cache) {
+            if (!hp || hp->type.get() != RE::BGSHeadPart::HeadPartType::kEyes ||
+                hp->model.c_str() == nullptr || hp->model.c_str()[0] == '\0') {
+                return false;
+            }
+            const auto mainGeo = InspectEyeNifGeometry(hp->model.c_str(), cache);
+            if (!Core::IsEyeMeshProbeValidAndBilateral(mainGeo)) {
+                return false;
+            }
+            return HasOnlyBilateralEyeExtraParts(hp, cache);
+        }
+
         [[nodiscard]] bool AreEyeCentersCompatible(
             const Core::EyeMeshProbe& a,
             const Core::EyeMeshProbe& b) noexcept {
@@ -294,16 +308,14 @@ namespace MORWHA::Engine {
             if (!hp) {
                 return false;
             }
-            if (IsAuthoritativeMasterForRace(hp->GetFile(0), race)) {
-                return true;
-            }
             const auto type = hp->type.get();
             if (type == RE::BGSHeadPart::HeadPartType::kEyes) {
                 if (!HasValidPlayableEyeSetup(hp, /*requireRaceTri=*/false) ||
-                    !HasOnlyBilateralEyeExtraParts(hp, eyeGeoCache)) {
+                    !IsBilateralTwoEyedPart(hp, eyeGeoCache)) {
                     return false;
                 }
-                if (canonicalEyeSignatures.empty()) {
+                if (IsAuthoritativeMasterForRace(hp->GetFile(0), race) ||
+                    canonicalEyeSignatures.empty()) {
                     return true;
                 }
                 const auto sig = MakeGeometrySignature(hp);
@@ -325,6 +337,9 @@ namespace MORWHA::Engine {
                     }
                 }
                 return false;
+            }
+            if (IsAuthoritativeMasterForRace(hp->GetFile(0), race)) {
+                return true;
             }
             if (type == RE::BGSHeadPart::HeadPartType::kEyebrows) {
                 return canonicalBrowSignatures.empty() ||
@@ -495,7 +510,8 @@ namespace MORWHA::Engine {
             bool smpLoaded,
             const std::vector<RE::BGSHeadPart*>& allCandidates,
             std::vector<GeometrySignature>& outEyeSignatures,
-            std::vector<GeometrySignature>& outBrowSignatures) {
+            std::vector<GeometrySignature>& outBrowSignatures,
+            EyeNifGeoCache& eyeGeoCache) {
             auto recordIfAuthoritative = [&](const RE::BGSHeadPart* hp) {
                 if (!hp) {
                     return;
@@ -514,6 +530,9 @@ namespace MORWHA::Engine {
                 }
                 auto sig = MakeGeometrySignature(hp);
                 if (type == RE::BGSHeadPart::HeadPartType::kEyes) {
+                    if (!IsBilateralTwoEyedPart(hp, eyeGeoCache)) {
+                        return;
+                    }
                     AppendUniqueSignature(outEyeSignatures, std::move(sig));
                 } else {
                     AppendUniqueSignature(outBrowSignatures, std::move(sig));
@@ -593,7 +612,8 @@ namespace MORWHA::Engine {
                 smpLoaded,
                 allCandidates,
                 canonicalEyeSignatures,
-                canonicalBrowSignatures);
+                canonicalBrowSignatures,
+                eyeGeoCache);
 
             const std::string canonicalHphFaceEdid =
                 (topology == Foundation::TopologyPool::HighPolyHead)
@@ -1310,6 +1330,42 @@ namespace MORWHA::Engine {
         return false;
     }
 
+    bool HeadPartPoolIndexer::IsCompatibleIndexedBrowForRace(
+        const RE::BGSHeadPart* browPart,
+        const RE::TESRace* targetRace,
+        Foundation::Sex sex,
+        Foundation::TopologyPool topology) const noexcept {
+        if (!built_ || !browPart || !targetRace ||
+            browPart->type.get() != RE::BGSHeadPart::HeadPartType::kEyebrows) {
+            return false;
+        }
+        if (IsPartInIndexedPool(browPart, targetRace, sex, topology)) {
+            return true;
+        }
+        const auto* targetPool = GetPool(targetRace, sex, topology);
+        if (!targetPool || targetPool->eyebrows.empty()) {
+            return false;
+        }
+        if (!HaveCompatibleBrowGeometry(browPart, targetPool->eyebrows.front())) {
+            return false;
+        }
+        const std::uint64_t sexBit = static_cast<std::uint64_t>(sex);
+        for (const auto& [key, dualPool] : pools_) {
+            if ((key & 1ull) != sexBit) {
+                continue;
+            }
+            const auto& candBrows = (topology == Foundation::TopologyPool::HighPolyHead)
+                                        ? dualPool.highPolyHead.eyebrows
+                                        : dualPool.vanilla.eyebrows;
+            for (const auto* entry : candBrows) {
+                if (entry == browPart) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     std::vector<std::int32_t> HeadPartPoolIndexer::GetNativeMorphPresets(
         const RE::TESRace* race,
         Foundation::Sex sex,
@@ -1599,9 +1655,6 @@ namespace MORWHA::Engine {
         }
         const auto sigA = MakeGeometrySignature(a);
         const auto sigB = MakeGeometrySignature(b);
-        if (sigA == sigB) {
-            return true;
-        }
         if (sigA.defaultTri != sigB.defaultTri || sigA.chargenTri != sigB.chargenTri) {
             return false;
         }
@@ -1610,12 +1663,37 @@ namespace MORWHA::Engine {
         }
         try {
             thread_local EyeNifGeoCache s_eyeGeoCache;
+            if (!IsBilateralTwoEyedPart(a, s_eyeGeoCache) ||
+                !IsBilateralTwoEyedPart(b, s_eyeGeoCache)) {
+                return false;
+            }
+            if (sigA == sigB) {
+                return true;
+            }
             const auto geoA = InspectEyeNifGeometry(sigA.model, s_eyeGeoCache);
             const auto geoB = InspectEyeNifGeometry(sigB.model, s_eyeGeoCache);
             return AreEyeCentersCompatible(geoA, geoB);
         } catch (...) {
             return false;
         }
+    }
+
+    bool HeadPartPoolIndexer::HaveCompatibleBrowGeometry(
+        const RE::BGSHeadPart* a,
+        const RE::BGSHeadPart* b) noexcept {
+        if (!a || !b ||
+            a->type.get() != RE::BGSHeadPart::HeadPartType::kEyebrows ||
+            b->type.get() != RE::BGSHeadPart::HeadPartType::kEyebrows) {
+            return false;
+        }
+        const auto sigA = MakeGeometrySignature(a);
+        const auto sigB = MakeGeometrySignature(b);
+        return !sigA.model.empty() && sigA == sigB;
+    }
+
+    bool HeadPartPoolIndexer::IsAuthoritativeBaseOrHphPart(
+        const RE::BGSHeadPart* hp) noexcept {
+        return hp != nullptr && IsBaseOrHphMaster(hp->GetFile(0));
     }
 
     std::uint64_t HeadPartPoolIndexer::MakeRaceSexKey(

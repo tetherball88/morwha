@@ -111,6 +111,13 @@ namespace MORWHA::Engine {
             std::span<const std::int32_t> allowedEyesPresets = {},
             std::span<const std::int32_t> allowedMouthPresets = {});
 
+        [[nodiscard]] std::vector<float> ComputeSpecCrossRaceEarDeltas(
+            RE::TESRace* targetRace,
+            RE::TESRace* secondaryRace,
+            Foundation::Sex sex,
+            Foundation::TopologyPool topology,
+            Foundation::Seed64 seed);
+
     private:
         struct CanonicalTriAsset {
             const Core::OpaqueTriAsset* chargenTri{ nullptr };

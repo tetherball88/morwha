@@ -34,4 +34,4 @@ M.O.R.W.H.A is structured as a strict directed acyclic graph (DAG) in `SKSE_Sour
    - Saving the game (`SaveCallback`) writes active `SpawnedMortalLink` entries to the `'MRWH'` co-save and promotes referenced `slotKey`s (plus transitive `donorASlotKey` / `donorBSlotKey` ancestors) to `committed = true`.
    - Reloading or exiting without saving (`OnSessionRevert`) releases uncommitted `DPF.esp` slots via `DPF::ReleaseByOwnerKey` and prunes them from `DynamicNPCRegistry.json`.
 3. **Async 3D Sync (`Mortal3dSyncService`)**:
-   - Applies per-NPC hair/skin/chimera shader tints cleanly once `Is3DLoaded()` and `GetFaceNodeSkinned()` finish streaming on unpaused frames, without burning `BGSColorForm` FormID slots or triggering redundant neck-seam resets.
+   - Applies per-NPC hair/skin/chimera shader tints and idempotent mixed-heritage pinna ear-morph deltas (`FGBM` + `BSDynamicTriShape`) cleanly once `Is3DLoaded()` and `GetFaceNodeSkinned()` finish streaming on unpaused frames, without burning `BGSColorForm` FormID slots or triggering redundant neck-seam resets.

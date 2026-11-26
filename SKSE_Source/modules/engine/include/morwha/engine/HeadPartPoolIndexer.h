@@ -57,6 +57,13 @@ namespace MORWHA::Engine {
             const RE::BGSHeadPart* a,
             const RE::BGSHeadPart* b) noexcept;
 
+        [[nodiscard]] static bool HaveCompatibleBrowGeometry(
+            const RE::BGSHeadPart* a,
+            const RE::BGSHeadPart* b) noexcept;
+
+        [[nodiscard]] static bool IsAuthoritativeBaseOrHphPart(
+            const RE::BGSHeadPart* hp) noexcept;
+
         void BuildIndex(bool smpLoaded);
 
         [[nodiscard]] bool IsBuilt() const noexcept { return built_; }
@@ -79,6 +86,12 @@ namespace MORWHA::Engine {
 
         [[nodiscard]] bool IsCompatibleIndexedEyeForRace(
             const RE::BGSHeadPart* eyePart,
+            const RE::TESRace* targetRace,
+            Foundation::Sex sex,
+            Foundation::TopologyPool topology) const noexcept;
+
+        [[nodiscard]] bool IsCompatibleIndexedBrowForRace(
+            const RE::BGSHeadPart* browPart,
             const RE::TESRace* targetRace,
             Foundation::Sex sex,
             Foundation::TopologyPool topology) const noexcept;

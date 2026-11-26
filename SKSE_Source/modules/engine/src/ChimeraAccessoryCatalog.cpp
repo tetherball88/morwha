@@ -2,6 +2,7 @@
 
 #include "morwha/engine/EngineLogging.h"
 #include "morwha/engine/FormRefResolver.h"
+#include "morwha/engine/HeadPartPoolIndexer.h"
 #include "morwha/engine/HybridSkinService.h"
 #include "morwha/engine/TesNpcHydrator.h"
 #include "morwha/engine/VfsAssetReader.h"
@@ -23,7 +24,23 @@ namespace MORWHA::Engine {
         constexpr std::uint32_t kNakedTailKhajiitFormId = 0x0B79B9u;
         constexpr std::uint32_t kNakedTailArgonianFormId = 0x069CE2u;
         constexpr std::uint32_t kHeadPartsAllRacesMinusBeastFormId = 0x0A803Fu;
+        constexpr std::uint32_t kNordRaceFormId = 0x013746u;
         constexpr std::uint32_t kRaceMenuHornHeadPartType = 32u;
+
+        [[nodiscard]] std::string NormalizeLowerVfsMeshKey(const char* rawPath) {
+            if (!rawPath || rawPath[0] == '\0') {
+                return {};
+            }
+            std::string vfs = BuildMeshVfsPath(rawPath);
+            for (char& ch : vfs) {
+                if (ch == '/') {
+                    ch = '\\';
+                } else {
+                    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                }
+            }
+            return vfs;
+        }
 
         [[nodiscard]] std::uint8_t LineageToBitMask(State::ChimeraManifestLineage lineage) noexcept {
             switch (lineage) {
@@ -324,6 +341,7 @@ namespace MORWHA::Engine {
     void ChimeraAccessoryCatalog::InitializeAtDataLoaded() {
         humanoidRaces_.clear();
         humanoidValidRacesList_ = nullptr;
+        canonicalHumanMouthSignatures_.clear();
         clonedTailKhajiit_ = nullptr;
         clonedTailArgonian_ = nullptr;
         sharpMouthTxst_ = nullptr;
@@ -418,6 +436,42 @@ namespace MORWHA::Engine {
             CloneRuntimeArmaForHumanoids(vanillaArgonianTail, "MORWHA_ARMA_TailArgonian");
 
         sharpMouthTxst_ = BuildMouthTextureSetIfPresent("Sharp", "MORWHA_Txst_MouthSharp");
+
+        if (auto* nordRace = dataHandler->LookupForm<RE::TESRace>(kNordRaceFormId, "Skyrim.esm")) {
+            auto recordMouthSig = [&](const RE::BGSHeadPart* hp) {
+                if (!hp || hp->type.get() != RE::BGSHeadPart::HeadPartType::kMisc ||
+                    !hp->extraParts.empty()) {
+                    return;
+                }
+                CanonicalMouthSignature sig{
+                    .modelVfs = NormalizeLowerVfsMeshKey(hp->model.c_str()),
+                    .chargenTriVfs = NormalizeLowerVfsMeshKey(
+                        hp->morphs[RE::BGSHeadPart::MorphIndices::kChargenMorph].model.c_str())
+                };
+                if (!sig.modelVfs.empty() && !sig.chargenTriVfs.empty() &&
+                    std::ranges::find(canonicalHumanMouthSignatures_, sig) ==
+                        canonicalHumanMouthSignatures_.end()) {
+                    canonicalHumanMouthSignatures_.push_back(std::move(sig));
+                }
+            };
+            const auto& indexer = HeadPartPoolIndexer::GetSingleton();
+            for (const auto sex : { Foundation::Sex::Male, Foundation::Sex::Female }) {
+                const auto reSex =
+                    (sex == Foundation::Sex::Female) ? RE::SEXES::kFemale : RE::SEXES::kMale;
+                recordMouthSig(
+                    nordRace->GetHeadPartByType(RE::BGSHeadPart::HeadPartType::kMisc, reSex));
+                if (indexer.IsBuilt()) {
+                    if (const auto* vPool = indexer.GetPool(
+                            nordRace, sex, Foundation::TopologyPool::Vanilla)) {
+                        recordMouthSig(vPool->primaryMouth);
+                    }
+                    if (const auto* hPool = indexer.GetPool(
+                            nordRace, sex, Foundation::TopologyPool::HighPolyHead)) {
+                        recordMouthSig(hPool->primaryMouth);
+                    }
+                }
+            }
+        }
 
         std::size_t filesScanned = 0u;
         std::size_t filesFailed = 0u;
@@ -562,6 +616,53 @@ namespace MORWHA::Engine {
         return false;
     }
 
+    bool ChimeraAccessoryCatalog::IsHumanMouthPartCompatible(
+        const RE::BGSHeadPart* mouthPart) const {
+        if (!mouthPart ||
+            mouthPart->type.get() != RE::BGSHeadPart::HeadPartType::kMisc ||
+            !mouthPart->extraParts.empty() ||
+            canonicalHumanMouthSignatures_.empty()) {
+            return false;
+        }
+        const CanonicalMouthSignature sig{
+            .modelVfs = NormalizeLowerVfsMeshKey(mouthPart->model.c_str()),
+            .chargenTriVfs = NormalizeLowerVfsMeshKey(
+                mouthPart->morphs[RE::BGSHeadPart::MorphIndices::kChargenMorph].model.c_str())
+        };
+        return !sig.modelVfs.empty() && !sig.chargenTriVfs.empty() &&
+               std::ranges::find(canonicalHumanMouthSignatures_, sig) !=
+                   canonicalHumanMouthSignatures_.end();
+    }
+
+    bool ChimeraAccessoryCatalog::RaceUsesCanonicalHumanMouth(
+        const RE::TESRace* race,
+        Foundation::Sex sex) const {
+        if (!race || canonicalHumanMouthSignatures_.empty()) {
+            return false;
+        }
+        const auto& indexer = HeadPartPoolIndexer::GetSingleton();
+        if (indexer.IsBuilt()) {
+            const auto topo = indexer.SelectPreferredTopology(race, sex);
+            if (const auto* pool = indexer.GetPool(race, sex, topo);
+                pool && pool->primaryMouth) {
+                return IsHumanMouthPartCompatible(pool->primaryMouth);
+            }
+        }
+        const auto reSex =
+            (sex == Foundation::Sex::Female) ? RE::SEXES::kFemale : RE::SEXES::kMale;
+        if (const auto* nativeMouth = const_cast<RE::TESRace*>(race)->GetHeadPartByType(
+                RE::BGSHeadPart::HeadPartType::kMisc, reSex)) {
+            return IsHumanMouthPartCompatible(nativeMouth);
+        }
+        if (race->morphRace) {
+            if (const auto* morphMouth = race->morphRace->GetHeadPartByType(
+                    RE::BGSHeadPart::HeadPartType::kMisc, reSex)) {
+                return IsHumanMouthPartCompatible(morphMouth);
+            }
+        }
+        return false;
+    }
+
     RE::BGSHeadPart* ChimeraAccessoryCatalog::PickEarHeadPart(
         Core::ChimeraLineageKind lineage,
         const RE::TESRace* race,
@@ -632,7 +733,7 @@ namespace MORWHA::Engine {
         Foundation::Sex sex,
         Foundation::Seed64 seed) const {
         const std::uint8_t lBit = DomainLineageBit(lineage);
-        if (lBit == 0u || !race) {
+        if (lBit == 0u || !race || !RaceUsesCanonicalHumanMouth(race, sex)) {
             return nullptr;
         }
         std::vector<RE::BGSHeadPart*> filtered;
@@ -657,6 +758,9 @@ namespace MORWHA::Engine {
         }
         const auto it = approvedHeadParts_.find(part);
         if (it == approvedHeadParts_.end()) {
+            return false;
+        }
+        if (it->second.isMouth && !RaceUsesCanonicalHumanMouth(race, sex)) {
             return false;
         }
         return MatchesEntryFilter(part, it->second.sexMask, race, sex);
@@ -911,7 +1015,7 @@ namespace MORWHA::Engine {
     RE::BGSHeadPart* ChimeraAccessoryCatalog::ResolveRuntimeBeastMouthPart(
         RE::BGSHeadPart* baseMouth,
         State::BeastTeethKind teethKind) {
-        if (!baseMouth) {
+        if (!baseMouth || !IsHumanMouthPartCompatible(baseMouth)) {
             return nullptr;
         }
         RE::BGSTextureSet* txst = nullptr;

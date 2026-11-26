@@ -7,9 +7,11 @@
 #include "morwha/engine/VfsAssetReader.h"
 
 #include <RE/B/BGSColorForm.h>
+#include <RE/B/BGSKeyword.h>
 #include <RE/B/BGSTextureSet.h>
 #include <RE/B/BGSVoiceType.h>
 #include <RE/T/TESDataHandler.h>
+#include <RE/T/TESNPC.h>
 
 #include <algorithm>
 #include <array>
@@ -264,8 +266,10 @@ namespace MORWHA::Engine {
         std::vector<Core::ComplexionSample> detailSigs(candidates.size());
         std::size_t nonBaselineDetailCount = 0u;
         for (std::size_t i = 0; i < candidates.size(); ++i) {
+            // Skyrim TXST stores Facegen complexion detail maps (BlankDetailmap / *HeadDetail_*.dds)
+            // in TX04 = BSTextureSet::Textures::kHeight (slot 4), NOT kDetailMap/kGlowMap (slot 3 = _sk.dds).
             const char* detailPath =
-                candidates[i]->textures[RE::BSTextureSet::Textures::kDetailMap].textureName.c_str();
+                candidates[i]->textures[RE::BSTextureSet::Textures::kHeight].textureName.c_str();
             detailSigs[i] = DecodeAndAnalyzeVfsTexture(detailPath ? detailPath : "");
             if (Core::IsComplexionNonBaseline(detailSigs[i])) {
                 ++nonBaselineDetailCount;
@@ -274,11 +278,24 @@ namespace MORWHA::Engine {
 
         std::vector<Core::ComplexionSample> normalSigs;
         if (nonBaselineDetailCount == 0u) {
-            normalSigs.resize(candidates.size());
-            for (std::size_t i = 0; i < candidates.size(); ++i) {
-                const char* normPath =
-                    candidates[i]->textures[RE::BSTextureSet::Textures::kNormal].textureName.c_str();
-                normalSigs[i] = DecodeAndAnalyzeVfsTexture(normPath ? normPath : "");
+            bool hasDistinctNormals = false;
+            const std::string firstNorm = BuildTextureVfsPath(
+                candidates.front()->textures[RE::BSTextureSet::Textures::kNormal].textureName.c_str());
+            for (std::size_t i = 1u; i < candidates.size(); ++i) {
+                const std::string candNorm = BuildTextureVfsPath(
+                    candidates[i]->textures[RE::BSTextureSet::Textures::kNormal].textureName.c_str());
+                if (candNorm != firstNorm) {
+                    hasDistinctNormals = true;
+                    break;
+                }
+            }
+            if (hasDistinctNormals) {
+                normalSigs.resize(candidates.size());
+                for (std::size_t i = 0; i < candidates.size(); ++i) {
+                    const char* normPath =
+                        candidates[i]->textures[RE::BSTextureSet::Textures::kNormal].textureName.c_str();
+                    normalSigs[i] = DecodeAndAnalyzeVfsTexture(normPath ? normPath : "");
+                }
             }
         }
 
@@ -337,6 +354,49 @@ namespace MORWHA::Engine {
                 State::TintSemanticType::Forehead,
                 ageAdj.ageShadowColor,
                 ageAdj.foreheadAlpha);
+        }
+    }
+
+    void SyncNpcAgeCompatibilityKeywords(
+        RE::TESNPC* targetNpc,
+        const State::DynamicNpcSpec& spec) {
+        if (!targetNpc) {
+            return;
+        }
+        if (auto* rsvIgnoreKw = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("RSVignore");
+            rsvIgnoreKw && targetNpc->HasKeyword(rsvIgnoreKw)) {
+            return;
+        }
+        auto* rsvYoungKw = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("RSVyoung");
+        auto* rsvOldKw = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("RSVold");
+        if (!rsvYoungKw && !rsvOldKw) {
+            return;
+        }
+
+        const Foundation::AgeBracket effectiveBracket =
+            Core::ResolveAgeBracket(spec.ageBracket, spec.donorMode, spec.seed);
+        const bool wantYoung =
+            (effectiveBracket == Foundation::AgeBracket::Auto ||
+             effectiveBracket == Foundation::AgeBracket::YoungAdult);
+        const bool wantOld = (effectiveBracket == Foundation::AgeBracket::Elder);
+
+        if (rsvYoungKw) {
+            if (wantYoung) {
+                if (!targetNpc->HasKeyword(rsvYoungKw)) {
+                    targetNpc->AddKeyword(rsvYoungKw);
+                }
+            } else if (targetNpc->HasKeyword(rsvYoungKw)) {
+                targetNpc->RemoveKeyword(rsvYoungKw);
+            }
+        }
+        if (rsvOldKw) {
+            if (wantOld) {
+                if (!targetNpc->HasKeyword(rsvOldKw)) {
+                    targetNpc->AddKeyword(rsvOldKw);
+                }
+            } else if (targetNpc->HasKeyword(rsvOldKw)) {
+                targetNpc->RemoveKeyword(rsvOldKw);
+            }
         }
     }
 

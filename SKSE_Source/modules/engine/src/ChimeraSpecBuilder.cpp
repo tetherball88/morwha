@@ -350,8 +350,11 @@ namespace MORWHA::Engine {
                         ? settings.khajiitTier2
                         : settings.argonianTier2;
 
+                const bool enableSharpTeethForRace =
+                    featCfg.enableTeeth &&
+                    catalog.RaceUsesCanonicalHumanMouth(targetRace, targetSex);
                 spec.beastTeethKind =
-                    featCfg.enableTeeth ? State::BeastTeethKind::Sharp : State::BeastTeethKind::None;
+                    enableSharpTeethForRace ? State::BeastTeethKind::Sharp : State::BeastTeethKind::None;
 
                 if (plan.lineage == Core::ChimeraLineageKind::HumanoidKhajiit) {
                     spec.beastTailKind =
@@ -381,7 +384,7 @@ namespace MORWHA::Engine {
                     }
                 }
 
-                if (featCfg.enableTeeth) {
+                if (enableSharpTeethForRace) {
                     const bool hasRsvSharp = catalog.HasBeastMouthTextureSet(State::BeastTeethKind::Sharp);
                     auto* catalogMouth =
                         catalog.PickCatalogedMouthHeadPart(plan.lineage, targetRace, targetSex, seed);

@@ -59,9 +59,13 @@ namespace MORWHA::Engine {
                 if (indexer.IsPartInIndexedPool(part, race, sex, topology)) {
                     return true;
                 }
-                if (allowCrossRaceCompatibleEye &&
-                    part->type.get() == RE::BGSHeadPart::HeadPartType::kEyes) {
-                    return indexer.IsCompatibleIndexedEyeForRace(part, race, sex, topology);
+                if (allowCrossRaceCompatibleEye) {
+                    if (part->type.get() == RE::BGSHeadPart::HeadPartType::kEyes) {
+                        return indexer.IsCompatibleIndexedEyeForRace(part, race, sex, topology);
+                    }
+                    if (part->type.get() == RE::BGSHeadPart::HeadPartType::kEyebrows) {
+                        return indexer.IsCompatibleIndexedBrowForRace(part, race, sex, topology);
+                    }
                 }
                 return false;
             }
@@ -263,13 +267,18 @@ namespace MORWHA::Engine {
         const RE::TESRace* optionalSecondRace,
         bool allowSharedTri) {
         auto validBits = ExtractAllowedMorphPresetIndices(race, sex, faceRelated, slot);
-        if ((slot == 0u || slot == 2u) && IsAllRaceMorphsUnlocked(faceRelated)) {
+        if (slot == 0u || slot == 2u) {
             if (optionalSecondRace != nullptr && optionalSecondRace != race) {
-                const auto* secondFr = ResolveRaceFaceRelatedData(
-                    const_cast<RE::TESRace*>(optionalSecondRace), sex);
-                const auto extra = ExtractAllowedMorphPresetIndices(
-                    optionalSecondRace, sex, secondFr, slot);
-                validBits.insert(validBits.end(), extra.begin(), extra.end());
+                const auto& indexer = HeadPartPoolIndexer::GetSingleton();
+                if (IsAllRaceMorphsUnlocked(faceRelated) ||
+                    (indexer.SharesHumanoidChargenTri(race) &&
+                     indexer.SharesHumanoidChargenTri(optionalSecondRace))) {
+                    const auto* secondFr = ResolveRaceFaceRelatedData(
+                        const_cast<RE::TESRace*>(optionalSecondRace), sex);
+                    const auto extra = ExtractAllowedMorphPresetIndices(
+                        optionalSecondRace, sex, secondFr, slot);
+                    validBits.insert(validBits.end(), extra.begin(), extra.end());
+                }
             } else if (allowSharedTri) {
                 const auto extra =
                     HeadPartPoolIndexer::GetSingleton().GetSharedTriMorphPresets(race, sex, slot);
@@ -618,6 +627,7 @@ namespace MORWHA::Engine {
                 }
             }
         }
+        SyncNpcAgeCompatibilityKeywords(targetNpc, spec);
         MortalHeritageKeywordService::GetSingleton().SyncNpcHeritageKeywords(
             targetNpc, spec, resolvedRace);
 

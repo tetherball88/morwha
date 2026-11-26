@@ -347,6 +347,7 @@ namespace MORWHA::Core {
         Foundation::Sex donorSex{ Foundation::Sex::Female };
         const OpaqueRaceRig* donorCanonicalRig{ nullptr };
         const OpaqueDonorRig* donorBaselineRig{ nullptr };
+        const OpaqueRaceRig* optionalTargetSpaceDonorRaceRig{ nullptr };
         MeshView headMesh{};
         std::span<const MeshView> eyeMeshes{};
         std::span<const float> mouthVertices{};
@@ -549,6 +550,11 @@ namespace MORWHA::Core {
     [[nodiscard]] MeshProjectionOutput ProjectDonorMeshesToTargetMorphs(
         const MeshProjectionRequest& request);
 
+    [[nodiscard]] std::vector<float> BuildCrossRaceEarMorphDeltas(
+        const OpaqueRaceRig* targetRig,
+        const OpaqueRaceRig* secondaryRig,
+        Foundation::Seed64 seed);
+
     // --- Eye Sampling & Pool Selection ---
     [[nodiscard]] EyeSample AnalyzeEyeMipmaps(
         std::span<const std::uint8_t, 32u * 32u * 4u> rgba32x32,
@@ -557,6 +563,8 @@ namespace MORWHA::Core {
 
     [[nodiscard]] bool IsEyeSampleValid(const EyeSample& sample) noexcept;
     [[nodiscard]] bool IsEyeSampleNormalMortal(const EyeSample& sample) noexcept;
+    [[nodiscard]] bool IsEyeSampleSeeingMortal(const EyeSample& sample, bool allowSupernatural) noexcept;
+    [[nodiscard]] bool HasEyeSampleDarkSclera(const EyeSample& sample) noexcept;
     [[nodiscard]] bool HasEyeSampleEmissive(const EyeSample& sample) noexcept;
     void SetEyeSampleEmissive(EyeSample& sample, bool hasEmissive) noexcept;
     [[nodiscard]] Foundation::RgbColor GetEyeSamplePreviewRgb(const EyeSample& sample) noexcept;

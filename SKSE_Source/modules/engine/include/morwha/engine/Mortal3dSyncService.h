@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -21,6 +22,7 @@ namespace MORWHA::Engine {
         std::optional<Foundation::RgbColor> tailColor{};
         std::optional<Foundation::RgbColor> hornColor{};
         std::optional<Foundation::RgbColor> earColor{};
+        std::shared_ptr<const std::vector<float>> earMorphDeltas{};
     };
 
     /// Listens for 3D load, NiNode update, and throttled frame events on MORWHA-hydrated actors
@@ -45,7 +47,8 @@ namespace MORWHA::Engine {
             Foundation::RgbColor skinColor,
             std::optional<Foundation::RgbColor> tailColor = std::nullopt,
             std::optional<Foundation::RgbColor> hornColor = std::nullopt,
-            std::optional<Foundation::RgbColor> earColor = std::nullopt);
+            std::optional<Foundation::RgbColor> earColor = std::nullopt,
+            std::shared_ptr<const std::vector<float>> earMorphDeltas = nullptr);
 
         void UnregisterHydratedNpcsBySlotKeys(const std::unordered_set<std::string>& slotKeys);
 

@@ -9,6 +9,7 @@
 namespace RE {
     class BGSTextureSet;
     class BGSVoiceType;
+    class TESNPC;
 }
 
 namespace MORWHA::Engine {
@@ -26,8 +27,7 @@ namespace MORWHA::Engine {
         Foundation::AgeBracket effectiveBracket,
         Foundation::Seed64 seed);
 
-    /// Radiometrically ranks the target race/sex's faceDetailsTextureSets by decoded 32x32 pixel
-    /// crease/detail complexity and selects an age-appropriate BGSTextureSet.
+    /// Selects an age-appropriate BGSTextureSet from the target race/sex's faceDetailsTextureSets.
     [[nodiscard]] RE::BGSTextureSet* ResolveComplexionForAgeAndRace(
         RE::TESRace* targetRace,
         const RE::TESRace::FaceRelatedData* faceRelated,
@@ -42,5 +42,12 @@ namespace MORWHA::Engine {
         RE::TESRace* targetRace,
         const RE::TESRace::FaceRelatedData* faceRelated,
         Foundation::AgeBracket requestedBracket);
+
+    /// Synchronizes optional runtime age-normal-map compatibility keywords (e.g. RSVyoung / RSVold
+    /// when Racial Skin Variance is installed and RSVignore is absent) onto targetNpc so external
+    /// SPID/NiOverride head-normal scripts honor spec.ageBracket.
+    void SyncNpcAgeCompatibilityKeywords(
+        RE::TESNPC* targetNpc,
+        const State::DynamicNpcSpec& spec);
 
 }  // namespace MORWHA::Engine

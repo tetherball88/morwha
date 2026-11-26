@@ -18,6 +18,7 @@
 #include "morwha/engine/MortalSpawner.h"
 #include "morwha/engine/SkseSerializationCallbacks.h"
 #include "morwha/engine/TesNpcHydrator.h"
+#include "morwha/engine/TriProjectorCache.h"
 #include "morwha/state/DynamicNpcRegistry.h"
 #include "morwha/state/MortalRequestJson.h"
 #include "morwha/state/MorwhaIniConfig.h"
@@ -310,6 +311,33 @@ namespace MORWHA::App {
                 spec.tailColor);
         }
 
+        [[nodiscard]] std::shared_ptr<const std::vector<float>> ResolveSpecEarMorphDeltas(
+            const State::DynamicNpcSpec& spec) {
+            if (spec.secondaryRaceRef.IsEmpty()) {
+                return nullptr;
+            }
+            auto* primaryRace = Engine::ResolvePluginForm<RE::TESRace>(spec.raceRef);
+            auto* secondaryRace = Engine::ResolvePluginForm<RE::TESRace>(spec.secondaryRaceRef);
+            if (!primaryRace || !secondaryRace || primaryRace == secondaryRace) {
+                return nullptr;
+            }
+            Foundation::TopologyPool activeTopo =
+                (spec.topology == Foundation::TopologyPool::HighPolyHead)
+                    ? Foundation::TopologyPool::HighPolyHead
+                    : Foundation::TopologyPool::Vanilla;
+            if (activeTopo == Foundation::TopologyPool::HighPolyHead &&
+                Engine::HeadPartPoolIndexer::GetSingleton().SelectPreferredTopology(
+                    primaryRace, spec.sex) != Foundation::TopologyPool::HighPolyHead) {
+                activeTopo = Foundation::TopologyPool::Vanilla;
+            }
+            auto deltas = Engine::TriProjectorCache::GetSingleton().ComputeSpecCrossRaceEarDeltas(
+                primaryRace, secondaryRace, spec.sex, activeTopo, spec.seed);
+            if (deltas.empty()) {
+                return nullptr;
+            }
+            return std::make_shared<const std::vector<float>>(std::move(deltas));
+        }
+
     }  // namespace
 
     SynthesisCoordinator& SynthesisCoordinator::GetSingleton() noexcept {
@@ -402,7 +430,8 @@ namespace MORWHA::App {
                     },
                     spec.tailColor,
                     spec.hornColor,
-                    ResolveSpecEarHairTint(spec));
+                    ResolveSpecEarHairTint(spec),
+                    ResolveSpecEarMorphDeltas(spec));
                 ++hydratedCount;
             }
             MORWHA_LOG_INFO(
@@ -622,7 +651,8 @@ namespace MORWHA::App {
             },
             stagedSpec.tailColor,
             stagedSpec.hornColor,
-            ResolveSpecEarHairTint(stagedSpec));
+            ResolveSpecEarHairTint(stagedSpec),
+            ResolveSpecEarMorphDeltas(stagedSpec));
 
         RE::Actor* spawned = Engine::SpawnHydratedMortalAtAnchor(
             slot->npc, *slot, stagedSpec, anchor, stagedSpec.forcePersist, donorARefId, donorBRefId);
@@ -962,7 +992,8 @@ namespace MORWHA::App {
             },
             updatedSpec.tailColor,
             updatedSpec.hornColor,
-            ResolveSpecEarHairTint(updatedSpec));
+            ResolveSpecEarHairTint(updatedSpec),
+            ResolveSpecEarMorphDeltas(updatedSpec));
 
         if (nameChanged) {
             targetActor->SetDisplayName(updatedSpec.displayName.c_str(), true);
@@ -1247,7 +1278,8 @@ namespace MORWHA::App {
             },
             newSpecOpt->tailColor,
             newSpecOpt->hornColor,
-            ResolveSpecEarHairTint(*newSpecOpt));
+            ResolveSpecEarHairTint(*newSpecOpt),
+            ResolveSpecEarMorphDeltas(*newSpecOpt));
 
         Serialization::RegisterSpawnedLink(State::SpawnedMortalLink{
             .actorRefId = linkOpt->actorRefId,
