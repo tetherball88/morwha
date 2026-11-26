@@ -76,6 +76,31 @@ jobs:
           name: stencils-zip
           path: out/MORWHA_SkinStencils_${{ steps.meta.outputs.version }}.zip
 
+      - name: Clean up existing releases or orphan drafts for tag
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          RELEASE_NAME: Hybrid Skin Stencils ${{ steps.meta.outputs.version }}
+        run: |
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases" > /tmp/releases.json
+          python3 - <<'PY'
+          import json, os, subprocess
+
+          rtag = os.environ["RELEASE_TAG"]
+          rname = os.environ["RELEASE_NAME"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          with open("/tmp/releases.json", "r", encoding="utf-8") as f:
+              pages = json.load(f)
+
+          for page in pages:
+              for rel in page:
+                  if rel.get("tag_name") == rtag or rel.get("name") == rname:
+                      rid = rel["id"]
+                      print(f"Deleting existing/draft release {rid} (draft={rel.get('draft')}) for {rtag}...")
+                      subprocess.run(["gh", "api", "-X", "DELETE", f"repos/{repo}/releases/{rid}"], check=True)
+          PY
+
       - name: Create or update Skin Stencils GitHub Release
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
         uses: softprops/action-gh-release@v2

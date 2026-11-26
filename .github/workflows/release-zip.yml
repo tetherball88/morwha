@@ -131,6 +131,29 @@ jobs:
           name: release-zip
           path: out/MORWHA_${{ steps.changelog.outputs.tag }}.zip
 
+      - name: Clean up existing releases or orphan drafts for tag
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.changelog.outputs.tag }}
+        run: |
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases" > /tmp/releases.json
+          python3 - <<'PY'
+          import json, os, subprocess
+
+          tag = os.environ["TAG"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          with open("/tmp/releases.json", "r", encoding="utf-8") as f:
+              pages = json.load(f)
+
+          for page in pages:
+              for rel in page:
+                  if rel.get("tag_name") == tag or rel.get("name") == tag:
+                      rid = rel["id"]
+                      print(f"Deleting existing/draft release {rid} (draft={rel.get('draft')}) for {tag}...")
+                      subprocess.run(["gh", "api", "-X", "DELETE", f"repos/{repo}/releases/{rid}"], check=True)
+          PY
+
       - name: Create GitHub Release
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
         uses: softprops/action-gh-release@v2
