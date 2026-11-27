@@ -69,6 +69,8 @@ namespace MORWHA::Engine {
         [[nodiscard]] bool IsRuntimeHybridFacePart(const RE::BGSHeadPart* part) const noexcept;
         [[nodiscard]] bool IsRuntimeHybridFaceTextureSet(const RE::BGSTextureSet* txst) const noexcept;
 
+        [[nodiscard]] std::string DumpDiagnosticSummaryJson() const;
+
     private:
         enum class BaseSkinFamily : std::uint8_t {
             Humanoid = 0,

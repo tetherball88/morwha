@@ -236,6 +236,7 @@ namespace MORWHA::Bridge::Papyrus {
             PrintConsoleLine("  mspawn gc                                   -> Garbage-collect uncommitted & orphaned DPF/registry slots across saves");
             PrintConsoleLine("  mspawn status                               -> Show DPF / FaceGenFixes / registry / chimera status");
             PrintConsoleLine("  mspawn list                                 -> List active spawned mortals in current save");
+            PrintConsoleLine("  mspawn diag [actorHex|player]               -> Export self-contained .zip debug bundle");
         }
 
         void PrintStatus() {
@@ -364,6 +365,44 @@ namespace MORWHA::Bridge::Papyrus {
             }
             if (CaseInsensitiveEquals(arg1, "list")) {
                 PrintActiveLinks();
+                return true;
+            }
+            if (CaseInsensitiveEquals(arg1, "diag") ||
+                CaseInsensitiveEquals(arg1, "diagnose") ||
+                CaseInsensitiveEquals(arg1, "bundle")) {
+                RE::Actor* diagActor = nullptr;
+                std::string targetSource = "none";
+                if (!arg2.empty()) {
+                    if (!TryParseActorToken(arg2, diagActor)) {
+                        PrintConsoleLine(std::format(
+                            "MORWHA Diag: Could not resolve actor '{}' (click an NPC in console or pass hex FormID / 'player').",
+                            arg2));
+                        return true;
+                    }
+                    targetSource = "explicitArg";
+                } else if (a_thisObj && a_thisObj->As<RE::Actor>()) {
+                    diagActor = a_thisObj->As<RE::Actor>();
+                    targetSource = "consoleSelection";
+                } else if (auto* pickActor = ResolveCrosshairOrConsoleActor(nullptr)) {
+                    diagActor = pickActor;
+                    targetSource = "crosshairPick";
+                } else if (IsActiveGameSessionReady()) {
+                    diagActor = RE::PlayerCharacter::GetSingleton();
+                    targetSource = "playerFallback";
+                }
+
+                const auto diagRes = App::SynthesisCoordinator::GetSingleton().ExportDiagnosticBundle(
+                    diagActor, targetSource);
+                if (diagRes.ok) {
+                    PrintConsoleLine(std::format(
+                        "MORWHA Diag: Wrote bundle ({} files, {:.1f} KB, target={}):",
+                        diagRes.archivedFileCount,
+                        static_cast<double>(diagRes.zipByteSize) / 1024.0,
+                        diagRes.targetSummary));
+                    PrintConsoleLine(std::format("  {}", diagRes.zipRelativePath));
+                } else {
+                    PrintConsoleLine(std::format("MORWHA Diag: Failed ({})", diagRes.error));
+                }
                 return true;
             }
             if (CaseInsensitiveEquals(arg1, "gc")) {
@@ -794,7 +833,7 @@ namespace MORWHA::Bridge::Papyrus {
 
         cmd->functionName = "morwha_spawn";
         cmd->shortName = "mspawn";
-        cmd->helpString = "mspawn [rel|child|reroll|gc|set|reload|female|male|status|list|help] [Args...]";
+        cmd->helpString = "mspawn [rel|child|reroll|diag|gc|set|reload|female|male|status|list|help] [Args...]";
         cmd->referenceFunction = false;
         cmd->SetParameters(s_params);
         cmd->executeFunction = &ExecuteMorwhaConsoleCommand;

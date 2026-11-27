@@ -266,10 +266,11 @@ namespace MORWHA::Engine {
         std::vector<Core::ComplexionSample> detailSigs(candidates.size());
         std::size_t nonBaselineDetailCount = 0u;
         for (std::size_t i = 0; i < candidates.size(); ++i) {
-            // Skyrim TXST stores Facegen complexion detail maps (BlankDetailmap / *HeadDetail_*.dds)
-            // in TX04 = BSTextureSet::Textures::kHeight (slot 4), NOT kDetailMap/kGlowMap (slot 3 = _sk.dds).
+            // Creation Engine BGSTextureSet::Load maps ESP TX04 (BlankDetailmap / *HeadDetail_*.dds)
+            // into runtime BSTextureSet::Textures::kDetailMap (slot 3), while TX03 (*_sk.dds) maps into
+            // kSubsurfaceTint (slot 2).
             const char* detailPath =
-                candidates[i]->textures[RE::BSTextureSet::Textures::kHeight].textureName.c_str();
+                candidates[i]->textures[RE::BSTextureSet::Textures::kDetailMap].textureName.c_str();
             detailSigs[i] = DecodeAndAnalyzeVfsTexture(detailPath ? detailPath : "");
             if (Core::IsComplexionNonBaseline(detailSigs[i])) {
                 ++nonBaselineDetailCount;

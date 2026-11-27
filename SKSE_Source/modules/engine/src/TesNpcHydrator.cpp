@@ -480,6 +480,21 @@ namespace MORWHA::Engine {
             targetNpc->boundData.boundMax = RE::NiNPShortPoint3{ 22, 14, 128 };
         }
 
+        // Snapshot any externally distributed (e.g. SPID / RSV / SkyPatcher / OBody) WNAM skin on
+        // same-race & same-sex re-hydration BEFORE mutating actorBaseFlags and race so RerollMortal
+        // and UpdateMortal do not wipe body skins back to race default while NiOverride head spells remain.
+        auto& accessoryCatalog = ChimeraAccessoryCatalog::GetSingleton();
+        auto& hybridSkinService = HybridSkinService::GetSingleton();
+        const RE::TESRace* const prevRace = targetNpc->race;
+        const bool prevIsFemale = targetNpc->IsFemale();
+        const bool wantFemale = (spec.sex == Foundation::Sex::Female);
+        RE::TESObjectARMO* preservedExternalSkin = nullptr;
+        if (prevRace == resolvedRace && prevIsFemale == wantFemale && targetNpc->skin != nullptr &&
+            !accessoryCatalog.IsRuntimeChimeraSkin(targetNpc->skin) &&
+            !hybridSkinService.IsRuntimeHybridSkinArmor(targetNpc->skin)) {
+            preservedExternalSkin = targetNpc->skin;
+        }
+
         // Core TESActorBaseData: explicitly clear kRespawn and template flags.
         targetNpc->actorData.actorBaseFlags = RE::ACTOR_BASE_DATA::Flag::kUnique;
         if (spec.stats.autoCalcStats) {
@@ -582,17 +597,21 @@ namespace MORWHA::Engine {
         if (!outfit && baselineNpc) {
             outfit = baselineNpc->defaultOutfit;
         }
-        auto& accessoryCatalog = ChimeraAccessoryCatalog::GetSingleton();
         targetNpc->defaultOutfit = outfit;
         targetNpc->sleepOutfit = ResolvePluginForm<RE::BGSOutfit>(spec.sleepOutfitRef);
         targetNpc->crimeFaction = ResolvePluginForm<RE::TESFaction>(spec.crimeFactionRef);
         accessoryCatalog.RecordNpcChimeraState(
             targetNpc->GetFormID(), resolvedRace, spec.sex, spec.beastTailKind, spec.hybridSkinId);
 
+        RE::TESObjectARMO* const effectiveBaseSkin =
+            preservedExternalSkin ? preservedExternalSkin : resolvedRace->skin;
         if (spec.hybridSkinId.empty()) {
             if (auto* customSkin = accessoryCatalog.GetOrCreateChimeraSkinArmor(
-                    resolvedRace->skin, resolvedRace, spec.beastTailKind)) {
+                    effectiveBaseSkin, resolvedRace, spec.beastTailKind)) {
                 targetNpc->skin = customSkin;
+                targetNpc->farSkin = nullptr;
+            } else if (preservedExternalSkin != nullptr) {
+                targetNpc->skin = preservedExternalSkin;
                 targetNpc->farSkin = nullptr;
             } else if (resolvedRace->skin != nullptr) {
                 targetNpc->skin = nullptr;
@@ -620,11 +639,15 @@ namespace MORWHA::Engine {
         // Opt custom hybrid-skinned / beast-toothed chimeras out of Racial Skin Variance's SPID
         // head-texture & teeth override spells (-RSVignore) so RSV does not replace MORWHA_HybFace_*
         // or sharp beast mouth textures via NiOverride 0.1-1.0s after spawn.
-        if (!spec.hybridSkinId.empty() || spec.beastTeethKind != State::BeastTeethKind::None) {
-            if (auto* rsvIgnoreKw = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("RSVignore")) {
+        if (auto* rsvIgnoreKw = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("RSVignore")) {
+            const bool wantRsvIgnore =
+                !spec.hybridSkinId.empty() || spec.beastTeethKind != State::BeastTeethKind::None;
+            if (wantRsvIgnore) {
                 if (!targetNpc->HasKeyword(rsvIgnoreKw)) {
                     targetNpc->AddKeyword(rsvIgnoreKw);
                 }
+            } else if (targetNpc->HasKeyword(rsvIgnoreKw)) {
+                targetNpc->RemoveKeyword(rsvIgnoreKw);
             }
         }
         SyncNpcAgeCompatibilityKeywords(targetNpc, spec);
@@ -859,9 +882,9 @@ namespace MORWHA::Engine {
 
         HybridSkinService::ResolvedHybridForms resolvedHybridForms{};
         if (!spec.hybridSkinId.empty()) {
-            resolvedHybridForms = HybridSkinService::GetSingleton().ResolveHybridNpcForms(
+            resolvedHybridForms = hybridSkinService.ResolveHybridNpcForms(
                 spec.hybridSkinId,
-                resolvedRace->skin,
+                effectiveBaseSkin,
                 resolvedRace,
                 spec.sex,
                 spec.beastTailKind,
@@ -870,8 +893,11 @@ namespace MORWHA::Engine {
                 targetNpc->skin = resolvedHybridForms.skinArmor;
                 targetNpc->farSkin = nullptr;
             } else if (auto* fallbackTailSkin = accessoryCatalog.GetOrCreateChimeraSkinArmor(
-                           resolvedRace->skin, resolvedRace, spec.beastTailKind)) {
+                           effectiveBaseSkin, resolvedRace, spec.beastTailKind)) {
                 targetNpc->skin = fallbackTailSkin;
+                targetNpc->farSkin = nullptr;
+            } else if (preservedExternalSkin != nullptr) {
+                targetNpc->skin = preservedExternalSkin;
                 targetNpc->farSkin = nullptr;
             }
             if (resolvedHybridForms.faceHeadPartClone) {

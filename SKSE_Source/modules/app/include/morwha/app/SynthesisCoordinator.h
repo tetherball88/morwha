@@ -1,6 +1,7 @@
 #pragma once
 
 #include "morwha/app/MortalSpawnTypes.h"
+#include "morwha/engine/DiagnosticBundleBuilder.h"
 #include "morwha/engine/MortalHeritageKeywordService.h"
 #include "morwha/engine/SynthesisSettings.h"
 #include "morwha/state/RegistryTypes.h"
@@ -80,6 +81,10 @@ namespace MORWHA::App {
 
         [[nodiscard]] std::string QueryMortalHeritageJson(
             RE::TESForm* targetActorOrBaseNpc) const;
+
+        [[nodiscard]] Engine::DiagnosticBundleResult ExportDiagnosticBundle(
+            RE::Actor* targetActor,
+            std::string_view targetResolutionSource) const;
 
     private:
         SynthesisCoordinator() = default;

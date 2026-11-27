@@ -1,5 +1,7 @@
 # M.O.R.W.H.A — Mortals On-Demand: Runtime World-Spawning, Heads & Appearance
 
+![M.O.R.W.H.A Showcase](docs/images/hero_banner.png)
+
 **M.O.R.W.H.A** is an ESP-less C++23 SKSE64 framework for Skyrim Special Edition / Anniversary Edition that synthesizes visually unique, persistent `RE::TESNPC` records and in-memory FaceGen heads at runtime — without static dummy `ActorBase` pools or prebaked head `.nif` / `.dds` exports.
 
 ---

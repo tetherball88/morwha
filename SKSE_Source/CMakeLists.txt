@@ -63,6 +63,7 @@ add_library(morwha_state STATIC
     modules/state/src/MorwhaIniConfig.cpp
     modules/state/src/JsonDom.cpp
     modules/state/src/FaceAnchorPreset.cpp
+    modules/state/src/DiagnosticZipWriter.cpp
 )
 target_compile_features(morwha_state PUBLIC cxx_std_23)
 target_include_directories(morwha_state
@@ -123,6 +124,7 @@ add_library(morwha_engine OBJECT
     modules/engine/src/ChimeraEngineSupport.cpp
     modules/engine/src/ChimeraMeshTinter.cpp
     modules/engine/src/ChimeraSpecBuilder.cpp
+    modules/engine/src/DiagnosticBundleBuilder.cpp
     modules/engine/src/DonorPhenotypeExtractor.cpp
     modules/engine/src/EngineLogging.cpp
     modules/engine/src/DpfClient.cpp
@@ -276,6 +278,7 @@ if(MORWHA_BUILD_TESTS)
         tests/test_morwha_ini_config.cpp
         tests/test_state_parsers.cpp
         tests/test_archetype_and_request_json.cpp
+        tests/test_diagnostic_zip_writer.cpp
     )
     target_compile_features(morwha_tests PRIVATE cxx_std_23)
     target_include_directories(morwha_tests PRIVATE

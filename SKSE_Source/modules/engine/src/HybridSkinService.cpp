@@ -26,7 +26,7 @@ namespace MORWHA::Engine {
         constexpr std::string_view kGeneratedRelDir = "Actors\\Character\\MORWHA\\Generated\\";
         constexpr std::string_view kGeneratedDiskDir = "Data/Textures/Actors/Character/MORWHA/Generated";
         constexpr std::string_view kCacheManifestPath = "Data/SKSE/Plugins/MORWHA/GeneratedSkinCache.json";
-        constexpr std::uint32_t kCacheFormatVersion = 3u;
+        constexpr std::uint32_t kCacheFormatVersion = 4u;
 
         constexpr std::uint32_t kNordRaceFormId = 0x013746u;
         constexpr std::uint32_t kKhajiitRaceFormId = 0x013745u;
@@ -326,17 +326,17 @@ namespace MORWHA::Engine {
                     }
                 }
             };
-            // In Skyrim skin BGSTextureSets (Skyrim.esm SkinBodyFemale_1 / SkinHeadFemaleNord & RSV):
-            //   TX00 (kDiffuse)  = diffuse (.dds)
-            //   TX01 (kNormal)   = object-space normal (_msn.dds)
-            //   TX03 (kGlowMap)  = subsurface / soft-lighting (_sk.dds)  [TX02 is empty!]
-            //   TX04 (kHeight)   = head complexion detail map (Head TXSTs only)
-            //   TX07 (kSpecular) = specular (_s.dds)
+            // Creation Engine BGSTextureSet::Load maps ESP TX00..TX07 into runtime BSTextureSet::Textures:
+            //   slot 0 (kDiffuse)        <- ESP TX00 (.dds)
+            //   slot 1 (kNormal)         <- ESP TX01 (_msn.dds)
+            //   slot 2 (kSubsurfaceTint) <- ESP TX03 (_sk.dds subsurface / soft-lighting tint)
+            //   slot 3 (kDetailMap)      <- ESP TX04 (BlankDetailmap / *HeadDetail_*.dds, Head TXSTs)
+            //   slot 7 (kSpecular)       <- ESP TX07 (_s.dds)
             pull(RE::BSTextureSet::Texture::kDiffuse, out.diffuseRel);
             pull(RE::BSTextureSet::Texture::kNormal, out.normalRel);
-            pull(RE::BSTextureSet::Texture::kGlowMap, out.subsurfRel);
+            pull(RE::BSTextureSet::Texture::kSubsurfaceTint, out.subsurfRel);
             pull(RE::BSTextureSet::Texture::kSpecular, out.specRel);
-            pull(RE::BSTextureSet::Texture::kHeight, out.detailRel);
+            pull(RE::BSTextureSet::Texture::kDetailMap, out.detailRel);
         };
 
         auto applyFallbacks = [](BaseSkinFamily fam, Foundation::Sex sex, FamilySexBasePaths& paths) {
@@ -974,7 +974,7 @@ namespace MORWHA::Engine {
             (void)DecodeVfsTextureOrSolid(srcPaths.normalRel, msnDims.width, msnDims.height, { 128u, 128u, 255u, 255u }, baseMsn);
         }
         if (needBaseSpec) {
-            (void)DecodeVfsTextureOrSolid(srcPaths.specRel, specDims.width, specDims.height, { 42u, 42u, 42u, 255u }, baseSpec);
+            (void)DecodeVfsTextureOrSolid(srcPaths.specRel, specDims.width, specDims.height, { 5u, 5u, 5u, 255u }, baseSpec);
         }
         if (needBaseSk) {
             (void)DecodeVfsTextureOrSolid(srcPaths.subsurfRel, skDims.width, skDims.height, { 64u, 32u, 28u, 255u }, baseSk);
@@ -1222,9 +1222,9 @@ namespace MORWHA::Engine {
             RE::BGSTextureSet::Flag::kHasModelSpaceNormalMap);
         txst->textures[RE::BSTextureSet::Texture::kDiffuse].textureName = paths.diffuseRel.c_str();
         txst->textures[RE::BSTextureSet::Texture::kNormal].textureName = paths.normalRel.c_str();
-        txst->textures[RE::BSTextureSet::Texture::kGlowMap].textureName = paths.subsurfRel.c_str();
+        txst->textures[RE::BSTextureSet::Texture::kSubsurfaceTint].textureName = paths.subsurfRel.c_str();
         if (!paths.detailRel.empty()) {
-            txst->textures[RE::BSTextureSet::Texture::kHeight].textureName = paths.detailRel.c_str();
+            txst->textures[RE::BSTextureSet::Texture::kDetailMap].textureName = paths.detailRel.c_str();
         }
         txst->textures[RE::BSTextureSet::Texture::kSpecular].textureName = paths.specRel.c_str();
 
@@ -1713,6 +1713,63 @@ namespace MORWHA::Engine {
         }
         std::lock_guard lock(mutex_);
         return std::ranges::find(runtimeHybridFaceTxsts_, txst) != runtimeHybridFaceTxsts_.end();
+    }
+
+    std::string HybridSkinService::DumpDiagnosticSummaryJson() const {
+        std::lock_guard lock(mutex_);
+        auto pathsToJson = [](const SurfaceSourcePaths& s) {
+            return nlohmann::json{
+                { "diffuse", s.diffuseRel },
+                { "normal", s.normalRel },
+                { "subsurface", s.subsurfRel },
+                { "specular", s.specRel },
+                { "detail", s.detailRel }
+            };
+        };
+
+        nlohmann::json baseObj = nlohmann::json::object();
+        constexpr std::array<std::string_view, 3> kFamNames{ "Humanoid", "Khajiit", "Argonian" };
+        for (std::size_t f = 0u; f < 3u; ++f) {
+            nlohmann::json sexObj = nlohmann::json::object();
+            for (const auto [sIdx, sName] : {
+                     std::pair{ std::size_t{ 0u }, "Male" },
+                     std::pair{ std::size_t{ 1u }, "Female" } }) {
+                const auto& bp = basePaths_[f][sIdx];
+                sexObj[sName] = nlohmann::json{
+                    { "valid", bp.valid },
+                    { "uvFamily", Core::BodyUvFamilyStem(bp.uvFamily) },
+                    { "face", pathsToJson(bp.face) },
+                    { "body", pathsToJson(bp.body) },
+                    { "hands", pathsToJson(bp.hands) }
+                };
+            }
+            baseObj[std::string(kFamNames[f])] = std::move(sexObj);
+        }
+
+        nlohmann::json tailObj = nlohmann::json::object();
+        for (const auto [tIdx, tName] : {
+                 std::pair{ std::size_t{ 0u }, "Khajiit" },
+                 std::pair{ std::size_t{ 1u }, "Argonian" } }) {
+            tailObj[tName] = nlohmann::json{
+                { "Male", pathsToJson(tailSourcePaths_[tIdx][0]) },
+                { "Female", pathsToJson(tailSourcePaths_[tIdx][1]) }
+            };
+        }
+
+        nlohmann::json root{
+            { "initialized", initialized_ },
+            { "enabled", enabled_ },
+            { "cacheFormatVersion", kCacheFormatVersion },
+            { "resolutionMode", State::GeneratedSkinResolutionToString(resolutionMode_) },
+            { "discoveredStencilCount", availableStencilFiles_.size() },
+            { "cachedManifestEntryCount", cacheFingerprints_.size() },
+            { "runtimeArchetypeSetCount", archetypeTxstCache_.size() },
+            { "runtimeHybridSkinCount", runtimeHybridSkins_.size() },
+            { "runtimeHybridFacePartCount", runtimeHybridFaceParts_.size() },
+            { "basePaths", std::move(baseObj) },
+            { "tailSourcePaths", std::move(tailObj) }
+        };
+        return root.dump(2);
     }
 
 }  // namespace MORWHA::Engine

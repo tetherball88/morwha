@@ -25,6 +25,7 @@ namespace MORWHA::Serialization {
     void RevertCallback(SKSE::SerializationInterface* serialization);
 
     void RegisterSpawnedLink(State::SpawnedMortalLink link);
+    void UnregisterSpawnedLink(Foundation::FormRawId actorRefId);
     [[nodiscard]] std::optional<State::SpawnedMortalLink> FindActiveLinkByActor(Foundation::FormRawId actorRefId);
     [[nodiscard]] std::optional<State::SpawnedMortalLink> FindActiveLinkBySlotKey(std::string_view slotKey);
     [[nodiscard]] std::vector<State::SpawnedMortalLink> GetActiveLinksSnapshot();

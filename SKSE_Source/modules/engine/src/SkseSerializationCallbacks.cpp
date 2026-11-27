@@ -162,6 +162,17 @@ namespace MORWHA::Serialization {
         }
     }
 
+    void UnregisterSpawnedLink(Foundation::FormRawId actorRefId) {
+        if (actorRefId.IsNull()) {
+            return;
+        }
+        std::lock_guard lock(LinksMutex());
+        auto& links = ActiveLinks();
+        std::erase_if(links, [&](const State::SpawnedMortalLink& existing) {
+            return existing.actorRefId == actorRefId;
+        });
+    }
+
     std::optional<State::SpawnedMortalLink> FindActiveLinkByActor(Foundation::FormRawId actorRefId) {
         if (actorRefId.IsNull()) {
             return std::nullopt;

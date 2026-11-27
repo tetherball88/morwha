@@ -11,7 +11,7 @@ Complete reference for the in-game Skyrim Special Edition / Anniversary Edition 
 - **Case Sensitivity**: Case-insensitive across all subcommands, sex/race/boolean tokens, and hex FormIDs.
 - **Argument Limit**: Skyrim's `SCRIPT_FUNCTION` binding accepts up to **4 string arguments** (`arg1`–`arg4`). Enclose multi-word names in quotes (`"Bjorn Iron-Jaw"` or `'Bjorn Iron-Jaw'`) so they count as a single argument.
 - **Session Availability**:
-  - **Available anytime (including Main Menu)**: `status`, `list`, `set`, `reload`, `gc`, `help` / `?`.
+  - **Available anytime (including Main Menu)**: `status`, `list`, `diag`, `set`, `reload`, `gc`, `help` / `?`.
   - **Requires an active loaded game session** (`PlayerCharacter` loaded in a cell): 0-donor spawn (`mspawn` / `spawn`), `rel`, `child`, and `reroll`.
 
 ---
@@ -30,6 +30,7 @@ Complete reference for the in-game Skyrim Special Edition / Anniversary Edition 
 | `mspawn gc` | Garbage-collect orphaned NPC slots | Scans `.ess`-paired `.skse` co-saves and active session links, releasing uncommitted & unreferenced `DPF.esp` / registry slots |
 | `mspawn status` | Print plugin & integration readiness | Displays version, ready state, `DPF.esp`, `FaceGenFixes.dll`, `hdtSMP64.dll`, spec/uncommitted/link counts, active settings, and detected beast accessory mods |
 | `mspawn list` | List active spawned mortals in current save | Prints `key`, `actor` ref FormID, `base` `TESNPC` FormID, `dpfLocalId`, `donors=(A,B)`, `loaded3D`, and `name` |
+| `mspawn diag [actor]` | Export self-contained `.zip` debug bundle | Captures logs, `MORWHA.ini`, load order, live 3D shaders/textures, NPC/donor records, VFS headers, and `64x64` `.bmp` previews into `Data/SKSE/Plugins/MORWHA/Diagnostics/*.zip` |
 | `mspawn help` / `mspawn ?` | Print concise usage help | Displays quick-usage summary in the console |
 
 ---
@@ -296,7 +297,24 @@ mspawn list
 
 ---
 
-### 4.10 `mspawn help` / `mspawn ?` — Usage Summary
+### 4.10 `mspawn diag` — Export Self-Contained Diagnostic Bundle (`.zip`)
+Packages a compact `< 2 MB` `.zip` archive under `Data/SKSE/Plugins/MORWHA/Diagnostics/` (MO2 `Overwrite` / Vortex `Data/`) for bug reports across custom modlists without copying full-resolution third-party textures:
+- `summary.json`, `environment/load_order.json`, and `environment/hybrid_skin_service.json` (loaded SKSE `.dll` modules, plugin load order, settings, active `'MRWH'` links, and discovered base skin paths / UV families).
+- `actor_records.json`, `actor_registry_spec.json`, and `actor_3d_scene.json` (selected `Actor` + `TESNPC` + `donorA`/`donorB` forms, `skin` `ARMO`/`ARMA`s, `headParts`, `SKEE` `NiOverride` texture overrides, live `BSLightingShaderProperty` parameters, and GPU-bound `NiSourceTexture` slots).
+- `assets/vfs_manifest.json` + `thumbnails/*.bmp` (`148`-byte DDS headers, `.nif`/`.tri` vertex & UV probes, `64x64` channel statistics, and `64x64` 24-bit `.bmp` previews).
+- `logs/MORWHA.log`, `configs/MORWHA.ini`, and `configs/GeneratedSkinCache.json`.
+
+**Syntax:**
+```text
+mspawn diag [actorHex|player]
+mspawn diagnose [actorHex|player]
+mspawn bundle [actorHex|player]
+```
+*(Targets explicit `<actorHex|player>` if passed; otherwise console-selected Actor, crosshair Actor, or `Player` when in-game, or exports a global environment/log bundle from the Main Menu.)*
+
+---
+
+### 4.11 `mspawn help` / `mspawn ?` — Usage Summary
 Prints a concise command cheatsheet directly to the in-game console.
 
 **Syntax:**

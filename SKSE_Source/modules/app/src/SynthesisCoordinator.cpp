@@ -24,6 +24,9 @@
 #include "morwha/state/MorwhaIniConfig.h"
 #include "morwha/state/SessionEpoch.h"
 
+#include <RE/C/Console.h>
+#include <RE/U/UI.h>
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -1255,6 +1258,18 @@ namespace MORWHA::App {
             }
         }
 
+        const bool raceOrSexChanged =
+            (targetActor->GetRace() != targetRace) || (existingSpec.sex != targetSex);
+        if (raceOrSexChanged) {
+            slot->npc->skin = nullptr;
+            slot->npc->farSkin = nullptr;
+            if (const auto numKws = slot->npc->GetNumKeywords(); numKws > 0u) {
+                std::vector<RE::BGSKeyword*> existingKws(
+                    slot->npc->keywords, slot->npc->keywords + numKws);
+                (void)slot->npc->RemoveKeywords(existingKws);
+            }
+        }
+
         if (!Engine::HydrateTesNpc(slot->npc, *newSpecOpt, /*isMidSession=*/true)) {
             MORWHA_LOG_ERROR(
                 "RerollMortal: Failed to re-hydrate TESNPC {:08X} ('{}')",
@@ -1281,43 +1296,78 @@ namespace MORWHA::App {
             ResolveSpecEarHairTint(*newSpecOpt),
             ResolveSpecEarMorphDeltas(*newSpecOpt));
 
-        Serialization::RegisterSpawnedLink(State::SpawnedMortalLink{
-            .actorRefId = linkOpt->actorRefId,
-            .dpfLocalId = slot->localId,
-            .slotKey = newSpecOpt->slotKey,
-            .donorMode = newSpecOpt->donorMode,
-            .seed = newSpecOpt->seed,
-            .donorARefId = resolvedDonorAId,
-            .donorBRefId = resolvedDonorBId
-        });
+        RE::Actor* activeActor = targetActor;
+        bool replacedActorRef = false;
+        if (raceOrSexChanged) {
+            const RE::NiPoint3 savedAngle = targetActor->GetAngle();
+            const bool wasConsoleSelected = (RE::Console::GetSelectedRef().get() == targetActor);
+            Serialization::UnregisterSpawnedLink(linkOpt->actorRefId);
 
-        if (!request.nameOverride.empty()) {
-            targetActor->SetDisplayName(newSpecOpt->displayName.c_str(), true);
+            if (RE::Actor* replacement = Engine::SpawnHydratedMortalAtAnchor(
+                    slot->npc,
+                    *slot,
+                    *newSpecOpt,
+                    targetActor,
+                    newSpecOpt->forcePersist,
+                    resolvedDonorAId,
+                    resolvedDonorBId)) {
+                replacement->SetAngle(savedAngle);
+                Engine::SyncLiveActorFromSpec(
+                    replacement, slot->npc, *newSpecOpt, /*refreshOutfit=*/false);
+                if (wasConsoleSelected) {
+                    if (auto* ui = RE::UI::GetSingleton()) {
+                        if (auto consoleMenu = ui->GetMenu<RE::Console>()) {
+                            consoleMenu->SetSelectedRef(replacement);
+                        }
+                    }
+                }
+                targetActor->Disable();
+                targetActor->SetDelete(true);
+                activeActor = replacement;
+                replacedActorRef = true;
+            }
         }
 
-        Engine::SyncLiveActorFromSpec(targetActor, slot->npc, *newSpecOpt, /*refreshOutfit=*/false);
+        if (!replacedActorRef) {
+            Serialization::RegisterSpawnedLink(State::SpawnedMortalLink{
+                .actorRefId = linkOpt->actorRefId,
+                .dpfLocalId = slot->localId,
+                .slotKey = newSpecOpt->slotKey,
+                .donorMode = newSpecOpt->donorMode,
+                .seed = newSpecOpt->seed,
+                .donorARefId = resolvedDonorAId,
+                .donorBRefId = resolvedDonorBId
+            });
 
-        RE::TESRace* raceToSwitch =
-            (targetActor->GetRace() != targetRace) ? targetRace : nullptr;
-        Engine::RefreshHydratedMortal3D(targetActor, raceToSwitch);
+            if (!request.nameOverride.empty()) {
+                targetActor->SetDisplayName(newSpecOpt->displayName.c_str(), true);
+            }
+
+            Engine::SyncLiveActorFromSpec(targetActor, slot->npc, *newSpecOpt, /*refreshOutfit=*/false);
+
+            RE::TESRace* raceToSwitch =
+                (targetActor->GetRace() != targetRace) ? targetRace : nullptr;
+            Engine::RefreshHydratedMortal3D(targetActor, raceToSwitch);
+        }
 
         MORWHA_LOG_INFO(
-            "RerollMortal: Rerolled '{}' actor={:08X} base={:08X} newSeed=0x{:016X} donors=({:08X},{:08X}) race={:08X} sex={} age={}",
+            "RerollMortal: Rerolled '{}' actor={:08X} base={:08X} newSeed=0x{:016X} donors=({:08X},{:08X}) race={:08X} sex={} age={} replacedRef={}",
             newSpecOpt->slotKey,
-            targetActor->GetFormID(),
+            activeActor->GetFormID(),
             slot->npc->GetFormID(),
             newSpecOpt->seed.raw(),
             resolvedDonorAId.raw(),
             resolvedDonorBId.raw(),
             targetRace->GetFormID(),
             static_cast<unsigned>(targetSex),
-            static_cast<unsigned>(newSpecOpt->ageBracket));
+            static_cast<unsigned>(newSpecOpt->ageBracket),
+            replacedActorRef);
 
         if (auto* console = RE::ConsoleLog::GetSingleton()) {
             console->Print(
                 "MORWHA: Rerolled '%s' (Actor %08X, key '%s', donors %08X/%08X, newSeed 0x%016llX)",
                 newSpecOpt->displayName.c_str(),
-                targetActor->GetFormID(),
+                activeActor->GetFormID(),
                 newSpecOpt->slotKey.c_str(),
                 resolvedDonorAId.raw(),
                 resolvedDonorBId.raw(),
@@ -1420,6 +1470,45 @@ namespace MORWHA::App {
         }
         json.append("]}");
         return json;
+    }
+
+    Engine::DiagnosticBundleResult SynthesisCoordinator::ExportDiagnosticBundle(
+        RE::Actor* targetActor,
+        std::string_view targetResolutionSource) const {
+        Engine::DiagnosticBundleInput input{};
+        input.targetActor = targetActor;
+        input.targetResolutionSource = std::string(targetResolutionSource);
+        input.coordinatorReady = IsReady();
+        input.modVersion = GetVersion();
+        input.registeredSpecCount = GetRegisteredSpecCount();
+        input.uncommittedSpecCount = GetUncommittedSpecCount();
+        input.activeSettings = GetSettings();
+
+        if (targetActor) {
+            std::string slotKey;
+            if (const auto linkOpt = Serialization::FindActiveLinkByActor(
+                    Foundation::FormRawId{ targetActor->GetFormID() })) {
+                slotKey = linkOpt->slotKey;
+            }
+            const RE::TESNPC* baseNpc = targetActor->GetActorBase();
+            std::lock_guard lock(registryMutex_);
+            if (slotKey.empty() && baseNpc != nullptr) {
+                if (const auto mapIt = hydratedNpcToSlotKey_.find(baseNpc->GetFormID());
+                    mapIt != hydratedNpcToSlotKey_.end()) {
+                    slotKey = mapIt->second;
+                }
+            }
+            if (!slotKey.empty()) {
+                const auto it = std::ranges::find_if(specs_, [&](const auto& existing) {
+                    return existing.slotKey == slotKey;
+                });
+                if (it != specs_.end()) {
+                    input.matchedSpec = *it;
+                }
+            }
+        }
+
+        return Engine::BuildDiagnosticBundle(input);
     }
 
 }  // namespace MORWHA::App
